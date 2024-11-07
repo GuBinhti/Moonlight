@@ -7,14 +7,14 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 def plot_moon_phases(days, phases, month, year):
     phase_images = {
-        'Waxing Crescent': 'Moon Phase/Waxing Crescent.png',
-        'First Quarter': 'Moon Phase/First Quarter.png',
-        'Waxing Gibbous': 'Moon Phase/Waxing Gibbous.png',
-        'Full Moon': 'Moon Phase/Full Moon.png',
-        'Waning Gibbous': 'Moon Phase/Waning Gibbous.png',
-        'Last Quarter': 'Moon Phase/Last Quarter.png',
-        'Waning Crescent': 'Moon Phase/Waning Crescent.png',
-        'New Moon': 'Moon Phase/New Moon.png'
+        'Waxing Crescent': 'Moonlight/Moon Phase/Waxing Crescent.png',
+        'First Quarter': 'Moonlight/Moon Phase/First Quarter.png',
+        'Waxing Gibbous': 'Moonlight/Moon Phase/Waxing Gibbous.png',
+        'Full Moon': 'Moonlight/Moon Phase/Full Moon.png',
+        'Waning Gibbous': 'Moonlight/Moon Phase/Waning Gibbous.png',
+        'Last Quarter': 'Moonlight/Moon Phase/Last Quarter.png',
+        'Waning Crescent': 'Moonlight/Moon Phase/Waning Crescent.png',
+        'New Moon': 'Moonlight/Moon Phase/New Moon.png'
     }
 
     phase_brightness = {
