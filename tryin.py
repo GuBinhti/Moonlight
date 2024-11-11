@@ -4,6 +4,7 @@ from calendar import monthrange
 import collections
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+import cv2
 
 PHASE_IMAGES = {
     'Waxing Crescent': 'Moonlight/Moon Phase/Waxing Crescent.png',
