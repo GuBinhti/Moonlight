@@ -13,19 +13,17 @@ import traceback
 from waveshare_OLED import OLED_1in27_rgb
 from PIL import Image,ImageDraw,ImageFont
 logging.basicConfig(level=logging.DEBUG)
-# Set the base path relative to the current working directory
-BASE_PATH = os.path.join(os.getcwd(), "Moon Phase")
 
 # Define paths to moon phase images
 PHASE_IMAGES = {
-    'Waxing Crescent': '/home/tbt/capstone/Moonlight/Moon Phase/Waxing Crescent.png',
-    'First Quarter': '/home/tbt/capstone/Moonlight/Moon Phase/Waxing Gibbous.png',
-    'Waxing Gibbous': '/home/tbt/capstone/Moonlight/Moon Phase/Waxing Gibbous.png',
-    'Full Moon': '/home/tbt/capstone/Moonlight/Moon Phase/Full Moon.png',
-    'Waning Gibbous': '/home/tbt/capstone/Moonlight/Moon Phase/Waning Gibbous.png',
-    'Last Quarter': '/home/tbt/capstone/Moonlight/Moon Phase/Last Quarter.png',
-    'Waning Crescent': '/home/tbt/capstone/Moonlight/Moon Phase/Waning Crescent.png',
-    'New Moon': '/home/tbt/capstone/Moonlight/Moon Phase/New Moon.png'
+    'Waxing Crescent': '/home/moonlight/Desktop/Moon Phase/Waxing Crescent.png',
+    'First Quarter': '/home/moonlight/Desktop/Moon Phase/First Quarter.png',
+    'Waxing Gibbous': '/home/moonlight/Desktop/Moon Phase/Waxing Gibbous.png',
+    'Full Moon': '/home/moonlight/Desktop/Moon Phase/Full Moon.png',
+    'Waning Gibbous': '/home/moonlight/Desktop/Moon Phase/Waning Gibbous.png',
+    'Last Quarter': '/home/moonlight/Desktop/Moon Phase/Last Quarter.png',
+    'Waning Crescent': '/home/moonlight/Desktop/Moon Phase/Waning Crescent.png',
+    'New Moon': '/home/moonlight/Desktop/Moon Phase/New Moon.png'
 }
 
 # Define a fixed lunar cycle
@@ -54,13 +52,11 @@ def calculate_phase(simulated_date, start_date, start_phase_index, lunar_cycle_l
 def calculate_moonrise(start_phase_index, days_since_start, lunar_cycle_length):
     """
     Calculate the moonrise time based on the starting phase index and days since start.
-    Each day adds a moonrise increment to the initial full moonrise at 6:00 PM.
+    Adjusts moonrise increment based on lunar cycle.
     """
     initial_moonrise = datetime.time(18, 0)  # 6:00 PM
-    moonrise_increment = datetime.timedelta(
-        minutes=(DEFAULT_MOONRISE_INCREMENT.total_seconds() / 60) *
-                (DEFAULT_LUNAR_CYCLE_LENGTH / lunar_cycle_length)
-    )
+    moonrise_increment_minutes = (DEFAULT_MOONRISE_INCREMENT.total_seconds() / 60) * (DEFAULT_LUNAR_CYCLE_LENGTH / lunar_cycle_length)
+    moonrise_increment = datetime.timedelta(minutes=moonrise_increment_minutes)
     total_increment = days_since_start * moonrise_increment
     full_moon_date = datetime.datetime.combine(datetime.date.today(), initial_moonrise)
     current_moonrise = full_moon_date + total_increment
@@ -97,7 +93,7 @@ def overlay_moon_phase(image, moon_phase):
         return image
 
     phase_image = Image.open(image_path).convert("RGBA")
-    phase_image = phase_image.resize((128, 128))  # Adjust size to fit the screen
+    phase_image = phase_image.resize((96, 96))  # Adjust size to fit the screen
     image.paste(phase_image, (0, 0), phase_image)
     return image
 
@@ -108,9 +104,12 @@ def run_simulation(speed_factor=10000):
     disp.Init()
     disp.clear()
 
+    # Prompt the user for custom lunar cycle length
+    user_input = input(f"Enter the lunar cycle length in days (default {DEFAULT_LUNAR_CYCLE_LENGTH}): ").strip()
+    lunar_cycle_length = float(user_input) if user_input else DEFAULT_LUNAR_CYCLE_LENGTH
+
     start_date = datetime.datetime.now()
     start_phase_index = 4  # Full Moon
-    lunar_cycle_length = DEFAULT_LUNAR_CYCLE_LENGTH
 
     while True:
         adjusted_seconds = (datetime.datetime.now() - start_date).total_seconds() * speed_factor
@@ -133,7 +132,7 @@ def run_simulation(speed_factor=10000):
         image = overlay_moon_phase(image, phase)
         disp.ShowImage(disp.getbuffer(image))
 
-        time.sleep(1)  # Adjust the refresh rate if needed
+        time.sleep(1)
 
 
-run_simulation(speed_factor=50000)
+run_simulation(speed_factor=1)
