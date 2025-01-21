@@ -65,7 +65,7 @@ def calculate_phase(simulated_time, start_time, start_phase_index, lunar_cycle_l
 def calculate_moonrise(day_count, daily_increment):
     """
     Return today's moonrise time based on the integer 'day_count' and the per-day increment.
-    The moonrise only changes at the start of each new simulated day.
+    The moonrise only changes at the start of each new simulated day (day_count).
     """
     initial_moonrise = datetime.time(18, 0)  # baseline: 6:00 PM
     # total shift = day_count * daily_increment
@@ -84,7 +84,8 @@ def calculate_altitude_azimuth(simulated_time, moonrise_time, moonset_time):
     moonset_datetime = datetime.datetime.combine(date_today, moonset_time)
 
     if simulated_time < moonrise_datetime or simulated_time > moonset_datetime:
-        return -90, -1  # moon below horizon
+        # Moon is below the horizon => altitude = -90, azimuth = -1
+        return -90, -1
 
     total_visibility = (moonset_datetime - moonrise_datetime).total_seconds()
     time_since_rise = (simulated_time - moonrise_datetime).total_seconds()
@@ -106,7 +107,7 @@ def overlay_moon_phase(image, moon_phase):
         return image
 
     phase_image = Image.open(image_path).convert("RGBA")
-    phase_image = phase_image.resize((96, 96))  # adjust to your OLED size
+    phase_image = phase_image.resize((96, 96))
     image.paste(phase_image, (0, 0), phase_image)
     return image
 
@@ -212,6 +213,7 @@ def run_simulation():
       - The daily moonrise increment scales based on that length (50 min for 29 days => scaled).
       - We advance 'simulated time' at the chosen speed factor.
       - The moonrise time is static for each integer day in *simulated* time.
+      - If moon is below horizon, screen is entirely black.
     """
     choices = get_user_choices()
     lunar_cycle_length = choices["lunar_cycle_length"]
@@ -268,18 +270,27 @@ def run_simulation():
             print(f"[Real Time: {real_now:%Y-%m-%d %H:%M:%S}]")
             print(f" Simulated Time: {simulated_time:%Y-%m-%d %H:%M:%S} (Day {day_count})")
             print(f" Lunar Cycle Length: {lunar_cycle_length} days")
-            print(f" Phase: {current_phase}")
             print(f" Moonrise: {moonrise_time}, Moonset: {MOONSET_TIME}")
             print(f" Altitude: {altitude:.2f}°, Azimuth: {azimuth:.2f}°")
+            print(f" Phase: {current_phase}")
             print("-" * 50)
 
-            # Prepare an image for the display
-            if use_custom_color and custom_color:
-                image = Image.new('RGB', (disp.width, disp.height), custom_color)
-            else:
+            # -------------------------------------------------------------
+            # Determine what to show on the display
+            # -------------------------------------------------------------
+            # If the moon is below the horizon, we override *everything* and show black.
+            if altitude < 0:
+                # Moon is below horizon => black screen
                 image = Image.new('RGB', (disp.width, disp.height), "BLACK")
-                image = overlay_moon_phase(image, current_phase)
+            else:
+                # Moon is above horizon, show either custom color or moon phase
+                if use_custom_color and custom_color:
+                    image = Image.new('RGB', (disp.width, disp.height), custom_color)
+                else:
+                    image = Image.new('RGB', (disp.width, disp.height), "BLACK")
+                    image = overlay_moon_phase(image, current_phase)
 
+            # Show the image on the display
             disp.ShowImage(disp.getbuffer(image))
 
             # Pause in real time before the next update
