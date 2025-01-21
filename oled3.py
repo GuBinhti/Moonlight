@@ -278,7 +278,6 @@ def run_simulation():
             # -------------------------------------------------------------
             # Determine what to show on the display
             # -------------------------------------------------------------
-            # If the moon is below the horizon, we override *everything* and show black.
             if altitude < 0:
                 # Moon is below horizon => black screen
                 image = Image.new('RGB', (disp.width, disp.height), "BLACK")
