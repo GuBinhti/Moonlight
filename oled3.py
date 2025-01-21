@@ -40,7 +40,7 @@ LUNAR_PHASES = [
     'Waning Crescent'
 ]
 
-# Default: 29-day lunar cycle.
+# Default 29-day lunar cycle.
 DEFAULT_LUNAR_CYCLE_LENGTH = 29.0  
 # For a 29-day cycle, the moon rises ~50 minutes later each day.
 DEFAULT_MOONRISE_INCREMENT = datetime.timedelta(minutes=50)  
@@ -49,25 +49,27 @@ MOONSET_TIME = datetime.time(7, 0)  # fixed moonset time
 # -------------------------------------------------------------------------
 #                             CALCULATIONS
 # -------------------------------------------------------------------------
-def calculate_phase(simulated_date, start_date, start_phase_index, lunar_cycle_length):
+def calculate_phase(simulated_time, start_time, start_phase_index, lunar_cycle_length):
     """
-    Determine the current lunar phase based on how many days have passed
-    relative to a chosen lunar cycle length.
+    Determine the current lunar phase as a fraction of 'lunar_cycle_length'.
+    This uses continuous time to allow the phase to shift gradually during each day.
     """
-    days_since_start = (simulated_date - start_date).total_seconds() / (24 * 3600)
+    # How many simulated days have passed (fractional)
+    days_since_start = (simulated_time - start_time).total_seconds() / (24 * 3600)
     # fraction of the current cycle
     phase_progress = (days_since_start % lunar_cycle_length) / lunar_cycle_length
-    # find which phase index that fraction corresponds to
+    # index into LUNAR_PHASES
     phase_index = (start_phase_index + int(phase_progress * len(LUNAR_PHASES))) % len(LUNAR_PHASES)
     return LUNAR_PHASES[phase_index]
 
-def calculate_moonrise(days_since_start, daily_increment):
+def calculate_moonrise(day_count, daily_increment):
     """
-    Calculate moonrise time given the number of real days since simulation start
-    and a daily increment (e.g., 25 min, 50 min, 100 min, etc.).
+    Return today's moonrise time based on the integer 'day_count' and the per-day increment.
+    The moonrise only changes at the start of each new simulated day.
     """
     initial_moonrise = datetime.time(18, 0)  # baseline: 6:00 PM
-    total_increment = days_since_start * daily_increment
+    # total shift = day_count * daily_increment
+    total_increment = day_count * daily_increment
     base_datetime = datetime.datetime.combine(datetime.date.today(), initial_moonrise)
     current_moonrise = base_datetime + total_increment
     return current_moonrise.time()
@@ -77,8 +79,9 @@ def calculate_altitude_azimuth(simulated_time, moonrise_time, moonset_time):
     Simplistic calculation of the moon's altitude and azimuth.
     If the moon is below the horizon, returns (-90, -1).
     """
-    moonrise_datetime = datetime.datetime.combine(simulated_time.date(), moonrise_time)
-    moonset_datetime = datetime.datetime.combine(simulated_time.date(), moonset_time)
+    date_today = simulated_time.date()
+    moonrise_datetime = datetime.datetime.combine(date_today, moonrise_time)
+    moonset_datetime = datetime.datetime.combine(date_today, moonset_time)
 
     if simulated_time < moonrise_datetime or simulated_time > moonset_datetime:
         return -90, -1  # moon below horizon
@@ -113,20 +116,19 @@ def overlay_moon_phase(image, moon_phase):
 def get_user_choices():
     """
     Ask the user:
-      1) Desired lunar cycle length
-      2) Whether to use a custom color or the default moon phase images
-      3) The custom color code if selected
-
+      1) Desired lunar cycle length in days.
+      2) Whether to use a custom color or the default moon phase images.
+      3) The custom color code if selected.
+      4) Speed factor for the simulation (how many simulated seconds per real second).
     Returns a dictionary with the user settings.
     """
     print("Welcome to the Moon Simulation Program!")
-    print("This will simulate a lunar cycle in real time,\n" \
-          "but scaled to the user-defined 'lunar cycle length'.\n")
+    print("This will simulate a lunar cycle in 'simulated time', which can run faster or slower than real time.\n")
     print("Press Enter at any prompt to use the default, or type 'q' to quit.\n")
 
     # 1) Lunar cycle length in days
     while True:
-        user_input = input(f"Enter the desired lunar cycle length in days (default = {DEFAULT_LUNAR_CYCLE_LENGTH}): ").strip()
+        user_input = input(f"Enter the desired lunar cycle length in days (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ").strip()
         if user_input.lower() == 'q':
             sys.exit("Exiting program.")
         if not user_input:
@@ -173,10 +175,31 @@ def get_user_choices():
                 user_hex_color = color_input
                 break
 
+    # 4) Speed factor
+    #    e.g. 1 = real time, 2 = twice as fast, 0.5 = half speed, 100 = 100x, etc.
+    speed_factor = 1.0
+    while True:
+        speed_input = input("Enter a speed factor (default=1.0, e.g. 10 = 10x faster): ").strip()
+        if speed_input.lower() == 'q':
+            sys.exit("Exiting program.")
+        if not speed_input:
+            speed_factor = 1.0
+            break
+        try:
+            sf = float(speed_input)
+            if sf <= 0:
+                print("Speed factor must be positive. Try again.")
+                continue
+            speed_factor = sf
+            break
+        except ValueError:
+            print("Invalid input. Please enter a positive number or press Enter for default (1.0).")
+
     return {
         "lunar_cycle_length": lunar_cycle_length,
         "use_custom_color": use_custom_color,
-        "custom_color": user_hex_color
+        "custom_color": user_hex_color,
+        "speed_factor": speed_factor
     }
 
 # -------------------------------------------------------------------------
@@ -185,19 +208,19 @@ def get_user_choices():
 def run_simulation():
     """
     Main loop:
-      - User sets lunar cycle length in days.
-      - The daily moonrise increment scales based on that length.
-      - We update the OLED in real time, with either a custom color or the correct moon phase image.
+      - User sets lunar cycle length in days and a simulation speed factor.
+      - The daily moonrise increment scales based on that length (50 min for 29 days => scaled).
+      - We advance 'simulated time' at the chosen speed factor.
+      - The moonrise time is static for each integer day in *simulated* time.
     """
-    # Gather user preferences
     choices = get_user_choices()
     lunar_cycle_length = choices["lunar_cycle_length"]
     use_custom_color = choices["use_custom_color"]
     custom_color = choices["custom_color"]
+    speed_factor = choices["speed_factor"]
 
-    # Scale daily moonrise increment:
-    # For a 29-day cycle, default is 50 min/day.
-    # So daily_moonrise_increment = 50 min * (29 / user_lunar_cycle_length)
+    # For a 29-day cycle, daily increment is 50 minutes.
+    # If user picks X days, daily increment = 50 * (29 / X) minutes.
     daily_moonrise_increment = DEFAULT_MOONRISE_INCREMENT * (DEFAULT_LUNAR_CYCLE_LENGTH / lunar_cycle_length)
 
     # Initialize display
@@ -206,54 +229,60 @@ def run_simulation():
     disp.Init()
     disp.clear()
 
-    # Treat the current real-time moment as "start" of the simulation
-    start_date = datetime.datetime.now()
-    # Set a starting phase index. For instance, 4 = 'Full Moon' in our LUNAR_PHASES
+    # Record the real start time and define our simulated start time
+    real_start_time = datetime.datetime.now()
+    simulated_start_time = datetime.datetime.now()  # We'll treat "now" as day 0
+    # Start phase index: 4 => 'Full Moon' (choose any you like)
     start_phase_index = 4  
 
     try:
         while True:
-            # Real time right now
-            now = datetime.datetime.now()
-            # How many real days have passed since we started?
-            days_since_start = (now - start_date).total_seconds() / (24 * 3600)
+            # Measure how long has passed in real time
+            real_now = datetime.datetime.now()
+            real_elapsed = real_now - real_start_time
 
-            # Determine the current moon phase
+            # Convert that to simulated seconds
+            sim_elapsed_seconds = real_elapsed.total_seconds() * speed_factor
+            # Our simulated time
+            simulated_time = simulated_start_time + datetime.timedelta(seconds=sim_elapsed_seconds)
+
+            # Figure out how many *whole days* have elapsed in the simulation
+            # This integer day count determines the static moonrise for that day.
+            day_count = int((simulated_time - simulated_start_time).total_seconds() // (24 * 3600))
+
+            # Calculate today's moonrise time (static all day)
+            moonrise_time = calculate_moonrise(day_count, daily_moonrise_increment)
+
+            # Calculate the current lunar phase (updates gradually during each day)
             current_phase = calculate_phase(
-                simulated_date=now,
-                start_date=start_date,
+                simulated_time=simulated_time,
+                start_time=simulated_start_time,
                 start_phase_index=start_phase_index,
                 lunar_cycle_length=lunar_cycle_length
             )
 
-            # Calculate moonrise time for today
-            moonrise_time = calculate_moonrise(
-                days_since_start=days_since_start,
-                daily_increment=daily_moonrise_increment
-            )
-
-            # Calculate altitude & azimuth for printing
-            altitude, azimuth = calculate_altitude_azimuth(now, moonrise_time, MOONSET_TIME)
+            # Approximate altitude & azimuth
+            altitude, azimuth = calculate_altitude_azimuth(simulated_time, moonrise_time, MOONSET_TIME)
 
             # Print info to the console
-            print(f"Real Time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Days Elapsed (real): {days_since_start:.2f} of {lunar_cycle_length} day cycle")
-            print(f"Current Phase: {current_phase}")
-            print(f"Moonrise: {moonrise_time}, Moonset: {MOONSET_TIME}")
-            print(f"Altitude: {altitude:.2f}°, Azimuth: {azimuth:.2f}°")
-            print("-" * 40)
+            print(f"[Real Time: {real_now:%Y-%m-%d %H:%M:%S}]")
+            print(f" Simulated Time: {simulated_time:%Y-%m-%d %H:%M:%S} (Day {day_count})")
+            print(f" Lunar Cycle Length: {lunar_cycle_length} days")
+            print(f" Phase: {current_phase}")
+            print(f" Moonrise: {moonrise_time}, Moonset: {MOONSET_TIME}")
+            print(f" Altitude: {altitude:.2f}°, Azimuth: {azimuth:.2f}°")
+            print("-" * 50)
 
-            # Create an image for the display
+            # Prepare an image for the display
             if use_custom_color and custom_color:
                 image = Image.new('RGB', (disp.width, disp.height), custom_color)
             else:
                 image = Image.new('RGB', (disp.width, disp.height), "BLACK")
                 image = overlay_moon_phase(image, current_phase)
 
-            # Show the image on the display
             disp.ShowImage(disp.getbuffer(image))
 
-            # Wait 1 second in real time before refreshing
+            # Pause in real time before the next update
             time.sleep(1)
 
     except KeyboardInterrupt:
