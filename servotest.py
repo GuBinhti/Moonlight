@@ -2,6 +2,8 @@ from skyfield.api import load, Topos
 from datetime import datetime, timedelta
 import RPi.GPIO as GPIO
 import time
+import math
+import threading
 #import datetime
 
 servo_pin = 24
@@ -17,7 +19,7 @@ def setup_servo(pin):
 
 
 def set_servo_angle(pwm, angle):
-    duty_cycle = (500 + 1500(angle)/20000)*100  # Map angle to servo range (2% to 12%)
+    duty_cycle = ((500 + (1500*angle))/20000)*100  # Map angle to servo range (2% to 12%)
     pwm.ChangeDutyCycle(duty_cycle)
     time.sleep(0.5)  # Allow the servo to reach the position
     pwm.ChangeDutyCycle(0)  # Stop sending signal to prevent jitter
@@ -44,29 +46,32 @@ def moon_placement_azimuth(year, month, day, hour, minute, second, pwm):
 
 
 
-    # Compute azimuth for 28 days
     i = 0
     while True:
         i += 1
-        current_time = local_time + timedelta(minutes=2*(i))
+        current_time = local_time + timedelta(minutes=i)
         utc_time = current_time
         t = ts.utc(utc_time.year, utc_time.month, utc_time.day, utc_time.hour, utc_time.minute, utc_time.second)
 
-        # Calculate the position of the Moon relative to the given location on Earth
+        
         moon_position = astrometric.at(t).observe(moon).apparent()
         alt,_, _ = moon_position.altaz()
         altitude = alt.degrees
         zenith_angle = 90 - altitude
-
-        # Print the azimuth data
+        zen = math.floor(zenith_angle)
+        
         print(f"Time: {current_time:} Zenith = {zenith_angle:.2f}°")
+        print (f"Altitude = {altitude:.2f}°")
 
-        # Adjust the servo to the azimuth angle
-        angle_percent = (min(180, zenith_angle))/180
-        print(f"Angle Percent: {angle_percent:}")
-        servo_angle = max(0, angle_percent) # Clamp azimuth to servo's range (0° to 180°)
-        set_servo_angle(pwm, servo_angle)
-        time.sleep(1)  # Wait for 1 second before the next adjustment
+        
+        angle_percent = (min(180, zen))/180
+        print(f"Angle Percent: {angle_percent:.2f}")
+        servo_angle = max(0, angle_percent) 
+        #newval = math.floor(servo_angle)
+        #print(f"Floored angle: {newval:}")
+        
+        set_servo_angle(pwm, (servo_angle))
+        #time.sleep(60)  #dont need i think 
 
 
 
