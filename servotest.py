@@ -21,8 +21,9 @@ def setup_servo(pin):
 def set_servo_angle(pwm, angle):
     duty_cycle = ((500 + (1500*angle))/20000)*100  # Map angle to servo range (2% to 12%)
     pwm.ChangeDutyCycle(duty_cycle)
-    time.sleep(0.5)  # Allow the servo to reach the position
-    pwm.ChangeDutyCycle(0)  # Stop sending signal to prevent jitter
+    time.sleep(0.5) # Allow the servo to reach the position
+    pwm.ChangeDutyCycle(0) # Stop sending signal to prevent jitter
+    #threading.Timer(60, lambda: pwm.ChangeDutyCycle(0)).start()
 
 
 def moon_placement_azimuth(year, month, day, hour, minute, second, pwm):
@@ -46,32 +47,35 @@ def moon_placement_azimuth(year, month, day, hour, minute, second, pwm):
 
 
 
-    i = 0
-    while True:
-        i += 1
-        current_time = local_time + timedelta(minutes=i)
-        utc_time = current_time
-        t = ts.utc(utc_time.year, utc_time.month, utc_time.day, utc_time.hour, utc_time.minute, utc_time.second)
+def update_servo():
+	nonlocal local_time
+	while True:
+       current_time = local_time + timedelta(seconds=1)
+       utc_time = current_time
+       t = ts.utc(utc_time.year, utc_time.month, utc_time.day, utc_time.hour, utc_time.minute, utc_time.second)
 
         
-        moon_position = astrometric.at(t).observe(moon).apparent()
-        alt,_, _ = moon_position.altaz()
-        altitude = alt.degrees
-        zenith_angle = 90 - altitude
-        zen = math.floor(zenith_angle)
+       moon_position = astrometric.at(t).observe(moon).apparent()
+       alt,_, _ = moon_position.altaz()
+       altitude = alt.degrees
+       zenith_angle = 90 - altitude
+       zen = math.floor(zenith_angle)
         
-        print(f"Time: {current_time:} Zenith = {zenith_angle:.2f}°")
-        print (f"Altitude = {altitude:.2f}°")
+       print(f"Time: {current_time:} Zenith = {zenith_angle:.2f}°")
+       print (f"Altitude = {altitude:.2f}°")
 
         
-        angle_percent = (min(180, zen))/180
-        print(f"Angle Percent: {angle_percent:.2f}")
-        servo_angle = max(0, angle_percent) 
-        #newval = math.floor(servo_angle)
-        #print(f"Floored angle: {newval:}")
+       angle_percent = (min(180, zen))/180
+       print(f"Angle Percent: {angle_percent:.2f}")
+       servo_angle = max(0, angle_percent) 
+       #newval = math.floor(servo_angle)
+       #print(f"Floored angle: {newval:}")
         
-        set_servo_angle(pwm, (servo_angle))
-        #time.sleep(60)  #dont need i think 
+       set_servo_angle(pwm, (servo_angle))
+       time.sleep(60)  #dont need i think
+        
+   servo_thread = threading.Thread(target=update_servo, daemon=True)
+   servo.thread.start() 
 
 
 
