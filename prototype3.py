@@ -389,9 +389,20 @@ def find_schedule_entry_for_time(schedule, cycle_start_date, sim_time):
 
 
 def start_simulation(schedule, cycle_start_date, user_cycle_length, update_interval_minutes=5, speed_factor=1.0):
+    # disp = OLED_1in27_rgb.OLED_1in27_rgb()
+    # logging.info("\r 1.27inch rgb OLED ")
+    # disp.Init()
+    # disp.clear()
+    # user_input_hex = input("Enter a custom hex color code (e.g. #FF0000) or press Enter to use moon phase images: ").strip()
+
+    # if user_input_hex and not user_input_hex.startswith('#'):
+    #     print("Invalid hex code format. It should start with '#' (e.g., #FF0000).")
+    #     user_input_hex = ""
+
     simulation_time = cycle_start_date
     cycle_end_time = cycle_start_date + datetime.timedelta(days=user_cycle_length)
-
+    # servo_pwm = setup_servo(servo_pin)
+    # set_servo_angle (servo_pwm, 0)
     print("\n--- Starting Simulation with Speed Factor =", speed_factor, "---")
     print(f"Simulation Start (sim time): {simulation_time}")
     print(f"Simulation End   (sim time): {cycle_end_time}\n")
@@ -436,6 +447,15 @@ def start_simulation(schedule, cycle_start_date, user_cycle_length, update_inter
                         f"Sim {simulation_time.strftime('%Y-%m-%d %H:%M:%S')}] "
                         "The Moon is not visible (altitude = 0)."
                     )
+            
+            # if user_input_hex:
+            #     image = Image.new('RGB', (disp.width, disp.height), user_input_hex)
+            # else:
+            #     image = Image.new('RGB', (disp.width, disp.height), "BLACK")
+            #     image = overlay_moon_phase(image, phase)
+
+            # disp.ShowImage(disp.getbuffer(image))
+            
 
             # Sleep in real-time for the chosen interval
             time.sleep(update_interval_minutes * 60)
