@@ -449,7 +449,6 @@ def start_simulation(schedule, cycle_start_date, user_cycle_length, update_inter
         print("Simulation finished or interrupted.")
 
 
-# --- MAIN / EXAMPLE USAGE ---
 if __name__ == "__main__":
     raw_cycle_length = input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
     user_cycle_length = int(raw_cycle_length) if raw_cycle_length else DEFAULT_LUNAR_CYCLE_LENGTH
