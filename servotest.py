@@ -19,8 +19,8 @@ def setup_servo(pin):
 def set_servo_angle(pwm, angle):
     duty_cycle = ((500 + (1500*angle))/20000)*100  
     pwm.ChangeDutyCycle(duty_cycle)
-    time.sleep(0.5)  # Allow the servo to reach the position
-    pwm.ChangeDutyCycle(0)  # Stop sending signal to prevent jitter
+    time.sleep(1)  # Allow the servo to reach the position
+    #pwm.ChangeDutyCycle(0)  # Stop sending signal to prevent jitter
 
 
 def moon_placement_azimuth(year, month, day, hour, minute, second, pwm):
@@ -41,15 +41,16 @@ def moon_placement_azimuth(year, month, day, hour, minute, second, pwm):
     earth = planets['earth']
 
     astrometric = earth + location
+    start_time = local_time
+    nex_print_time = start_time + timedelta(seconds=5)
 
 
 
     # Compute azimuth for 28 days
     i = 0
     while True:
-        i += 1
-        current_time = local_time + timedelta(minutes=2*(i))
-        utc_time = current_time
+        local_time += timedelta(seconds=1)
+        utc_time = local_time
         t = ts.utc(utc_time.year, utc_time.month, utc_time.day, utc_time.hour, utc_time.minute, utc_time.second)
 
         # Calculate the position of the Moon relative to the given location on Earth
@@ -57,16 +58,19 @@ def moon_placement_azimuth(year, month, day, hour, minute, second, pwm):
         alt,_, _ = moon_position.altaz()
         altitude = alt.degrees
         zenith_angle = 90 - altitude
+        
+        if local_time >= next_print_time:
 
-        # Print the azimuth data
-        print(f"Time: {current_time:} Zenith = {zenith_angle:.2f}°")
+            # Print the azimuth data
+            print(f"Time: {local_time:} Zenith = {zenith_angle:.2f}°")
 
-        # Adjust the servo to the azimuth angle
-        angle_percent = (min(180, zenith_angle))/180
-        print(f"Angle Percent: {angle_percent:.4f}")
-        servo_angle = max(0, angle_percent) # Clamp azimuth to servo's range (0° to 180°)
-        set_servo_angle(pwm, servo_angle)
-        time.sleep(1)  # Wait for 1 second before the next adjustment
+            # Adjust the servo to the azimuth angle
+            angle_percent = (min(180, zenith_angle))/180
+            print(f"Angle Percent: {angle_percent:.4f}")
+            servo_angle = max(0, angle_percent) # Clamp azimuth to servo's range (0° to 180°)
+            set_servo_angle(pwm, servo_angle)
+            next_print_time += timedelta(seconds=5)
+            time.sleep(1)  # Wait for 1 second before the next adjustment
 
 
 
@@ -93,3 +97,18 @@ finally:
     # Clean up GPIO resources
     servo_pwm.stop()
     GPIO.cleanup()
+    Traceback (most recent call last):
+  File "/home/moonlight/Desktop/ARM/servo.py", line 93, in <module>
+    moon_placement_azimuth(year, month, day, hour, minute, second, servo_pwm)
+  File "/home/moonlight/Desktop/ARM/servo.py", line 62, in moon_placement_azimuth
+    if local_time >= next_print_time:
+                     ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'next_print_time' where it is not associated with a value
+Exception ignored in: <function PWM.__del__ at 0x7fff51380cc0>
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/RPi/GPIO/__init__.py", line 179, in __del__
+  File "/usr/lib/python3/dist-packages/RPi/GPIO/__init__.py", line 202, in stop
+  File "/usr/lib/python3/dist-packages/lgpio.py", line 1084, in tx_pwm
+TypeError: unsupported operand type(s) for &: 'NoneType' and 'int'
+
+
