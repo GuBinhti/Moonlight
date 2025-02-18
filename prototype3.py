@@ -4,25 +4,27 @@ import numpy as np
 import logging    
 import time
 import traceback
-import RPi.GPIO as GPIO
+import math
+# import RPi.GPIO as GPIO
 import datetime
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
-from waveshare_OLED import OLED_1in27_rgb
-picdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'pic')
-libdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'lib')
-if os.path.exists(libdir):
-    sys.path.append(libdir)
-logging.basicConfig(level=logging.DEBUG)
+import matplotlib.dates as mdates
+# from PIL import Image, ImageDraw, ImageFont
+# from waveshare_OLED import OLED_1in27_rgb
+# picdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'pic')
+# libdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'lib')
+# if os.path.exists(libdir):
+# #     sys.path.append(libdir)
+# logging.basicConfig(level=logging.DEBUG)
 
 servo_pin = 24
-def setup_servo(pin):
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(pin, GPIO.OUT)
-    # Using frequency 50 Hz
-    pwm = GPIO.PWM(pin, 50)
-    pwm.start(0) 
-    return pwm
+# def setup_servo(pin):
+#     GPIO.setmode(GPIO.BCM)
+#     GPIO.setup(pin, GPIO.OUT)
+#     # Using frequency 50 Hz
+#     pwm = GPIO.PWM(pin, 50)
+#     pwm.start(0) 
+#     return pwm
 
 def set_servo_angle(pwm, angle):
     duty_cycle = ((500 + (angle/270)*2000)/20000)*100  # Map angle to servo range (2% to 12%)
@@ -43,7 +45,6 @@ PHASE_IMAGES = {
     'New Moon': '/home/moonlight/Desktop/Moon Phase/New Moon.png'
 }
 
-
 LUNAR_PHASES = [
     'Full Moon',
     'Waning Gibbous',
@@ -55,8 +56,8 @@ LUNAR_PHASES = [
     'Waxing Gibbous'
 ]
 
-# Default phase lengths (sum = 29 days)
-MoonPhaseLengthInDays = {
+# Default phase lengths (sum = 28 days)
+MoonPhaseLengthDays = { # maybe break into percentages
     'Full Moon':       1,
     'Waning Gibbous':  6,
     'Last Quarter':    1,
@@ -64,186 +65,152 @@ MoonPhaseLengthInDays = {
     'New Moon':        1,
     'Waxing Crescent': 6,
     'First Quarter':   1,
-    'Waxing Gibbous':  7
+    'Waxing Gibbous':  6
 }
 
-DEFAULT_LUNAR_CYCLE_LENGTH = 29   # Days in the "default" cycle
-DEFAULT_LATER_PER_DAY = 50        # 50-minute shift in moonrise daily
+MoonPhaseChecker = { 
+    'Full Moon':       'x',
+    'Waning Gibbous':  'o',
+    'Last Quarter':    'x',
+    'Waning Crescent': 'o',
+    'New Moon':        'x',
+    'Waxing Crescent': 'o',
+    'First Quarter':   'x',
+    'Waxing Gibbous':  'o'
+}
+
+
+DEFAULT_LUNAR_CYCLE_LENGTH = 28   # Days in the "default" cycle
+DEFAULT_LATER_PER_DAY = (50*28) / 29 # minutes later each day for a 28 day cycle 24 hours
 SUNSET_HOUR = 18                  # 6 PM
 SUNRISE_HOUR = 6                  # 6 AM
 
-
-def scale_phases(target_cycle_length):
-    base_cycle_length = 29
-    scale_factor = target_cycle_length / base_cycle_length
+def get_num_phases(target_cycle_length):
+    scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
     scaled_phases = {}
     for phase in LUNAR_PHASES:
-        original_length = MoonPhaseLengthInDays[phase]
-        if scale_factor >= 1:
-            # Scale all phases normally by flooring
-            new_length = int(original_length * scale_factor)
-            new_length = max(new_length, 1)
-        else:
-            # If scale_factor < 1, multi-day phases get scaled down
-            # Single-day phases remain 1 day
-            if original_length == 1:
-                new_length = 1
+        if scalar >= 1:
+            if MoonPhaseChecker[phase] == 'x':
+                new_length = math.floor(scalar * MoonPhaseLengthDays[phase])
             else:
-                new_length = int(original_length * scale_factor)
-                new_length = max(new_length, 1)
+                new_length = math.ceil(scalar * MoonPhaseLengthDays[phase])
+        if scalar < 1:
+            if MoonPhaseChecker[phase] == 'x':
+                new_length = math.ceil(scalar * MoonPhaseLengthDays[phase])
+            else:
+                new_length = math.floor(scalar * MoonPhaseLengthDays[phase])
         scaled_phases[phase] = new_length
     new_total = sum(scaled_phases.values())
+
+    if new_total != target_cycle_length:
+        if new_total > target_cycle_length:
+            for phase in MoonPhaseChecker:
+                if MoonPhaseChecker[phase] == 'o':
+                    tempLength = scaled_phases[phase]
+                    tempLength -= 1
+                    scaled_phases[phase] = tempLength
+                    new_total = sum(scaled_phases.values())
+                    if new_total == target_cycle_length:
+                        break
+        else:
+            for phase in MoonPhaseChecker:
+                if MoonPhaseChecker[phase] == 'o':
+                    tempLength = scaled_phases[phase]
+                    tempLength += 1
+                    scaled_phases[phase] = tempLength
+                    new_total = sum(scaled_phases.values())
+                    if new_total == target_cycle_length:
+                        break      
+    
+    # print(new_total)
+    # print(scaled_phases)
     return scaled_phases, new_total
 
-def get_scaled_phase(day_in_cycle, scaled_phases):
-    cumulative = 0
-    for phase in LUNAR_PHASES:
-        length = scaled_phases[phase]
-        if cumulative <= day_in_cycle < (cumulative + length):
-            return phase
-        cumulative += length
-    return 'Unknown Phase'
+def calculate_moonrise_times(target_cycle_length):
+    scaled_phases, new_total_days = get_num_phases(target_cycle_length)
+    scale_factor = float(target_cycle_length) / 29.5
+    kickback =  DEFAULT_LATER_PER_DAY / scale_factor
+    base_time_minutes = SUNSET_HOUR * 60
+    phase_sequence = []
+    for phase_name in LUNAR_PHASES:
+        count = scaled_phases[phase_name]
+        phase_sequence.extend([phase_name] * count)
 
-def calculate_moonrise_times_scaled(target_cycle_length):
-
-    # 1) Round user input to the nearest integer
-    rounded_cycle_length = int(round(target_cycle_length))
-    if rounded_cycle_length != target_cycle_length:
-        print(f"Requested {target_cycle_length:.2f} days; rounding to {rounded_cycle_length} days.")
-    else:
-        print(f"User requested an integer cycle of {rounded_cycle_length} days.")
-    
-    # 2) Scale phases
-    scaled_phases, new_total_days = scale_phases(rounded_cycle_length)
-    print(f"  => Scaled phases sum to {new_total_days} days in total.\n")
-
-    # 3) Daily offset (scale_factor = (rounded_cycle_length / 29))
-    scale_factor = float(rounded_cycle_length) / 29.0
-    minutes_later_per_day = 50.0 / scale_factor
-    
-    # 4) Approximate new_moon_day ~ 48% of new_total_days
-    new_moon_day = int(round((14.0 / 29.0) * new_total_days))
-    
     results = []
-    base_time_minutes = SUNSET_HOUR * 60  # 18:00 => 1080
-    
+
+    last_new_moon_day = None
     for day in range(new_total_days):
-        phase = get_scaled_phase(day, scaled_phases)
-        
-        # Moonrise 
-        if day < new_moon_day:
-            offset_minutes = int(round(day * minutes_later_per_day))
-            total_minutes = base_time_minutes + offset_minutes
-            rise_hour = (total_minutes // 60) % 24
-            rise_minute = total_minutes % 60
-            moonrise_time = datetime.time(rise_hour, rise_minute)
-        elif day == new_moon_day:
+        this_phase = phase_sequence[day]
+        if this_phase == "New Moon":
             moonrise_time = None
+            moonset_time  = None
+            last_new_moon_day = day
         else:
-            # After new moon => always 18:00
-            moonrise_time = datetime.time(18, 0)
-        
-        # Moonset 
-        if day < new_moon_day:
-            moonset_time = datetime.time(6, 0)
-        elif day == new_moon_day:
-            moonset_time = None
+            # pre-New Moon
+            if last_new_moon_day is None:
+                offset_minutes = int(round(day * kickback))
+                total_rise_minutes = base_time_minutes + offset_minutes
+                rise_hour = (total_rise_minutes // 60) % 24
+                rise_minute = total_rise_minutes % 60
+                moonrise_time = datetime.time(rise_hour, rise_minute)
+                
+                moonset_time = datetime.time(6, 0)
+
+            # post-New Moon 
+            else:
+                # Set rise at 18:00
+                moonrise_time = datetime.time(18, 0)
+                
+                # For the moonset, shift forward by ~50 min each day after the last New Moon
+                days_since_new_moon = day - last_new_moon_day
+                offset_after_new_moon = int(round(days_since_new_moon * kickback))
+                total_set_minutes = (SUNSET_HOUR * 60) + offset_after_new_moon
+                set_hour = (total_set_minutes // 60) % 24
+                set_minute = total_set_minutes % 60
+                moonset_time = datetime.time(set_hour, set_minute)
+
+        if moonrise_time and moonset_time:
+            today = datetime.date.today()
+            rise_dt = datetime.datetime.combine(today, moonrise_time)
+            set_dt = datetime.datetime.combine(today, moonset_time)
+            if set_dt < rise_dt:
+                set_dt += datetime.timedelta(days=1)
+                total_vis = (set_dt - rise_dt).total_seconds()
         else:
-            offset_after_new_moon = int(round((day - new_moon_day) * minutes_later_per_day))
-            total_set_minutes = (SUNSET_HOUR * 60) + offset_after_new_moon
-            set_hour = (total_set_minutes // 60) % 24
-            set_minute = total_set_minutes % 60
-            moonset_time = datetime.time(set_hour, set_minute)
-        
+            total_vis = 0
+
+        # Store the result for this day
         results.append({
             'day': day,
-            'phase': phase,
+            'phase': this_phase,
             'moonrise_time': moonrise_time,
-            'moonset_time': moonset_time
+            'moonset_time': moonset_time,
+            'total_visibility' : total_vis
         })
-    
     return results
 
-def calculate_altitude_azimuth(simulated_time, moonrise_time, moonset_time):
-    if moonrise_time is None or moonset_time is None:
-        return -90, -1  # Moon not visible
-    
-    current_date = simulated_time.date()
-    moonrise_datetime = datetime.datetime.combine(current_date, moonrise_time)
-    
-    # Check if moonset is on the next day
-    if moonset_time < moonrise_time:
-        moonset_datetime = datetime.datetime.combine(current_date + datetime.timedelta(days=1), moonset_time)
-    else:
-        moonset_datetime = datetime.datetime.combine(current_date, moonset_time)
-    
-    if simulated_time < moonrise_datetime or simulated_time > moonset_datetime:
-        return -90, -1  # Moon below horizon
-    
-    total_visibility = (moonset_datetime - moonrise_datetime).total_seconds()
-    time_since_rise = (simulated_time - moonrise_datetime).total_seconds()
-    
-    progress = time_since_rise / total_visibility
-    altitude = np.sin(progress * np.pi) * 90  # 0° to 90°
-    azimuth = 90 + (progress * 180)  # 90° (East) to 270° (West)
-    
-    return altitude, azimuth
 
-def run_simulation(target_cycle_length, speed_factor=1000):
-    # Setup Servo
-    servo_pwm = setup_servo(servo_pin)
-    set_servo_angle(servo_pwm, 0)
+def calculate_current_altitude(schedule_entry, specific_time, cycle_start_date):
+    """Calculate altitude with proper date context"""
+    # Calculate the actual date for this lunar day
+    entry_date = cycle_start_date + datetime.timedelta(days=schedule_entry['day'])
     
-    # Generate Moon Schedule
-    moon_schedule = calculate_moonrise_times_scaled(target_cycle_length)
-    cycle_length = len(moon_schedule)
+    # Create datetime objects with correct dates
+    moonrise_dt = datetime.datetime.combine(entry_date, schedule_entry['moonrise_time'])
+    moonset_dt = datetime.datetime.combine(entry_date, schedule_entry['moonset_time'])
+
+    # Handle overnight visibility
+    if moonset_dt <= moonrise_dt:
+        moonset_dt += datetime.timedelta(days=1)
+
+    if specific_time < moonrise_dt or specific_time > moonset_dt:
+        return 0
+
+    time_since_rise = (specific_time - moonrise_dt).total_seconds()
+    total_vis = (moonset_dt - moonrise_dt).total_seconds()
     
-    # Align start time with the beginning of the lunar cycle
-    start_date = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    simulated_time = start_date
-    
-    try:
-        while True:
-            # calculating current day in the lunar cycle
-            elapsed_days = (simulated_time - start_date).days
-            day_in_cycle = elapsed_days % cycle_length
-            entry = moon_schedule[day_in_cycle]
-            
-            # getting moon times and phase
-            phase = entry['phase']
-            moonrise = entry['moonrise_time']
-            moonset = entry['moonset_time']
-            
-            altitude, azimuth = calculate_altitude_azimuth(simulated_time, moonrise, moonset)
-            
-            # Determine servo angle
-            if altitude < 0:
-                servo_angle = 0  # Default position when not visible
-            else:
-                # Map azimuth from 90-270 to 0-270 degrees
-                servo_angle = (azimuth - 90) * (270 / 180)
-                servo_angle = max(0, min(270, servo_angle))
-            
-            # Update servo
-            set_servo_angle(servo_pwm, servo_angle)
-            
-            # Print simulation data
-            print(f"Simulated Time: {simulated_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Phase: {phase}")
-            print(f"Moonrise: {moonrise.strftime('%H:%M') if moonrise else 'None'}")
-            print(f"Moonset: {moonset.strftime('%H:%M') if moonset else 'None'}")
-            print(f"Altitude: {altitude:.2f}°  Azimuth: {azimuth:.2f}°")
-            print(f"Servo Angle: {servo_angle:.2f}°")
-            print("-" * 40)
-            
-            # Increment simulated time
-            time.sleep(0.1)
-            simulated_time += datetime.timedelta(seconds=speed_factor * 0.1)
-            
-    except KeyboardInterrupt:
-        servo_pwm.stop()
-        GPIO.cleanup()
-        print("Simulation stopped.")
+    progress = time_since_rise / total_vis
+    return np.sin(progress * np.pi) * 90
 
 def print_moon_schedule(schedule):
 
@@ -267,7 +234,7 @@ def plot_moon_schedule_times(schedule):
     set_hours = []
     
     def to_decimal_hour(t):
-        """Convert datetime.time -> decimal hour, e.g. 18:30 => 18.5"""
+        #Convert datetime.time -> decimal hour, e.g.30 => 18.5
         return t.hour + t.minute / 60.0 if t else None
 
     for entry in schedule:
@@ -310,18 +277,154 @@ def plot_moon_schedule_phases(schedule):
     plt.grid(True)
     plt.show()
 
+import matplotlib.dates as mdates
 
-if __name__ == "__main__":
-    user_input = input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
-    try:
-        user_cycle_length = float(user_input) if user_input else DEFAULT_LUNAR_CYCLE_LENGTH
-    except ValueError:
-        user_cycle_length = DEFAULT_LUNAR_CYCLE_LENGTH
+def plot_hourly_altitude(schedule_entry, cycle_start_date):
+    """Plot moon altitude throughout its visibility period with hourly markers."""
+    if not schedule_entry['moonrise_time'] or not schedule_entry['moonset_time']:
+        print("No moon visibility for this phase")
+        return
+
+    # Calculate the actual date for this lunar day
+    entry_date = cycle_start_date + datetime.timedelta(days=schedule_entry['day'])
     
-    moon_schedule = calculate_moonrise_times_scaled(user_cycle_length)
+    # Create datetime objects with correct dates
+    moonrise_dt = datetime.datetime.combine(entry_date, schedule_entry['moonrise_time'])
+    moonset_dt = datetime.datetime.combine(entry_date, schedule_entry['moonset_time'])
+
+    # Handle overnight visibility
+    if moonset_dt <= moonrise_dt:
+        moonset_dt += datetime.timedelta(days=1)
+
+    # Generate time points at 15-minute intervals for smooth curve
+    total_seconds = (moonset_dt - moonrise_dt).total_seconds()
+    time_points = [moonrise_dt + datetime.timedelta(seconds=x) 
+                   for x in np.arange(0, total_seconds, 15*60)]
+
+    # Calculate altitudes for all time points
+    altitudes = [calculate_current_altitude(schedule_entry, t, cycle_start_date) for t in time_points]
+
+    # #Generate hourly markers
+    # hour_markers = []
+    # current = moonrise_dt
+    # while current <= moonset_dt:
+    #     hour_markers.append(current)
+    #     current += datetime.timedelta(hours=1)
+
+    # 30 minutes markers
+    thirty_min_markers = []
+    current = moonrise_dt
+    while current <= moonset_dt:
+        thirty_min_markers.append(current)
+        current += datetime.timedelta(minutes=30)
+
+    # Create plot
+    #plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(14, 6))
+    
+    # Plot smooth curve
+    plt.plot(time_points, altitudes, label='Altitude', color='navy')
+    
+    # # Plot hourly markers
+    # for marker in hour_markers:
+    #     alt = calculate_current_altitude(schedule_entry, marker, cycle_start_date)
+    #     plt.scatter(marker, alt, color='red', zorder=5)
+    #     plt.text(marker, alt+5, f"{alt:.1f}°\n{marker.strftime('%H:%M')}", 
+    #             ha='center', fontsize=8)
+        
+    # Plot 30 minute markers
+    for marker in thirty_min_markers:
+        alt = calculate_current_altitude(schedule_entry, marker, cycle_start_date)
+        plt.scatter(marker, alt, color='red', s=20, zorder=5)  # Smaller marker
+        plt.text(marker, alt+5, f"{alt:.1f}°\n{marker.strftime('%H:%M')}", 
+                ha='center', fontsize=7)
+
+    # Format plot
+    plt.title(f"Moon Altitude - Day {schedule_entry['day']} ({schedule_entry['phase']})")
+    plt.xlabel("Time")
+    plt.ylabel("Altitude (degrees)")
+    plt.grid(True, alpha=0.3)
+    
+    # Use date locator and formatter
+    hours = mdates.HourLocator()
+    fmt = mdates.DateFormatter('%H:%M')
+    
+    plt.gca().xaxis.set_major_locator(hours)
+    plt.gca().xaxis.set_major_formatter(fmt)
+    plt.gcf().autofmt_xdate()
+    
+    plt.ylim(0, 100)
+    plt.tight_layout()
+    plt.show()
+
+
+def print_terminal_altitude_chart(schedule_entry, cycle_start_date):
+    if not schedule_entry['moonrise_time'] or not schedule_entry['moonset_time']:
+        print("Moon not visible today")
+        return
+
+    # Calculate actual calendar dates
+    entry_date = cycle_start_date + datetime.timedelta(days=schedule_entry['day'])
+    rise_dt = datetime.datetime.combine(entry_date, schedule_entry['moonrise_time'])
+    set_dt = datetime.datetime.combine(entry_date, schedule_entry['moonset_time'])
+
+    if set_dt <= rise_dt:
+        set_dt += datetime.timedelta(days=1)
+
+
+    current = rise_dt
+    # # Generate hourly points
+    # hour_points = []
+    # while current <= set_dt:
+    #     hour_points.append(current)
+    #     current += datetime.timedelta(hours=1)
+
+    # Generate 30 minute points
+    thirty_min_points = []
+    while current <= set_dt:
+        thirty_min_points.append(current)
+        current += datetime.timedelta(minutes=30)
+
+    # Header
+    print(f"\nAltitude Timeline - Day {schedule_entry['day']} ({schedule_entry['phase']})")
+    print(f"Visibility: {rise_dt.strftime('%Y-%m-%d %H:%M')} to {set_dt.strftime('%Y-%m-%d %H:%M')}")
+    print("-" * 40)
+    print(" Time    | Altitude")
+    print("-" * 40)
+
+    # # Print simple time-altitude pairs per hour
+    # for time_point in hour_points:
+    #     alt = calculate_current_altitude(schedule_entry, time_point, cycle_start_date)
+        
+    #     # Format time display
+    #     if time_point.date() == rise_dt.date():
+    #         time_str = time_point.strftime("%H:%M")
+    #     else:
+    #         time_str = time_point.strftime("%m-%d %H:%M")
+            
+    #     print(f" {time_str}  | {alt:5.1f}°")
+
+    #  Print simple time-altitude pairs per 30 minutes
+    for time_point in thirty_min_points:
+        alt = calculate_current_altitude(schedule_entry, time_point, cycle_start_date)
+        
+        # Format time display
+        if time_point.date() == rise_dt.date():
+            time_str = time_point.strftime("%H:%M")
+        else:
+            time_str = time_point.strftime("%m-%d %H:%M")
+            
+        print(f" {time_str}  | {alt:5.1f}°")
+
+    print("-" * 40)
+if __name__ == "__main__":
+    user_cycle_length = input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
+    moon_schedule = calculate_moonrise_times(int(user_cycle_length))
+    cycle_start_date = datetime.datetime(2023, 10, 1)  # Set your actual start date
     print_moon_schedule(moon_schedule)
     plot_moon_schedule_times(moon_schedule)
     plot_moon_schedule_phases(moon_schedule)
 
-    run_simulation(user_cycle_length, speed_factor=10000)
-
+    altitude_monitor_day = input(f"What day do you want to observe in your {user_cycle_length} lunar cycle?")
+    plot_hourly_altitude(moon_schedule[int(altitude_monitor_day)], cycle_start_date)
+    print_terminal_altitude_chart(moon_schedule[int(altitude_monitor_day)], cycle_start_date)
