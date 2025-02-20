@@ -218,6 +218,7 @@ def find_schedule_entry_for_time(schedule, cycle_start_date, sim_time):
             set_dt += datetime.timedelta(days=1)
 
         if rise_dt <= sim_time < set_dt:
+            #print(f"THIS IS THE ENTRY{entry}")
             return entry
     return None
 
@@ -513,7 +514,7 @@ if __name__ == "__main__":
         schedule=moon_schedule,
         cycle_start_date=cycle_start_date,
         user_cycle_length=user_cycle_length,
-        update_interval_minutes=0.1,  # small interval for quick demonstration
+        update_interval_minutes=1,  # small interval for quick demonstration
         speed_factor=speed_factor
     )
 
