@@ -8,13 +8,11 @@ import threading
 from queue import Queue
 
 
-# Matplotlib in interactive mode
 import matplotlib
 matplotlib.use("TkAgg")  # or another suitable backend
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-# Uncomment if you have a servo and GPIO
 # import RPi.GPIO as GPIO
 # from PIL import Image, ImageDraw, ImageFont
 # from waveshare_OLED import OLED_1in27_rgb
@@ -23,7 +21,7 @@ import matplotlib.dates as mdates
 # if os.path.exists(libdir):
 #     sys.path.append(libdir)
 
-plt.ion()  # Enable interactive (non-blocking) mode for Matplotlib
+plt.ion()  
 
 
 servo_pin = 24
@@ -37,10 +35,7 @@ servo_pin = 24
 #     return pwm
 
 def set_servo_angle(pwm, angle):
-    """
-    If you're using a servo, call this function to set a specific angle.
-    Requires that `pwm` is an already-set-up PWM object from RPi.GPIO.
-    """
+
     duty_cycle = ((500 + (angle / 270) * 2000) / 20000) * 100  # Map angle to servo range (2% to 12%)
     pwm.ChangeDutyCycle(duty_cycle)
     time.sleep(0.5)  # Allow the servo to reach the position
@@ -275,7 +270,6 @@ def non_blocking_plot_moon_schedule_times(schedule):
         rise_hours.append(to_decimal_hour(mr))
         set_hours.append(to_decimal_hour(ms))
 
-    # Optionally close previous windows if you prefer:
     # plt.close('all')
     plt.figure(figsize=(10,5))
     plt.plot(days, rise_hours, marker='o', label='Moonrise', color='blue')
@@ -413,12 +407,12 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
 
     try:
         while True:
-            # 1) Check if we're past the end of the cycle
+            #check if we're past the end of the cycle
             if simulation_time >= cycle_end_time:
                 print("Reached the end of the simulation!")
                 break
 
-            # 2) Simulation logic
+            # simulation logic
             current_entry = find_schedule_entry_for_time(schedule, cycle_start_date, simulation_time)
             if current_entry is not None:
                 altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
