@@ -428,20 +428,26 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
                     f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
                     f"- Altitude: {altitude_deg:.1f}°"
                 )
+                # DIEGO SERVO CODE IS PROB HERE 
             else:
                 # Possibly day time or no moon visible
                 if 6 <= simulation_time.hour < 18:
+                    
                     print(
                         f"[Real {datetime.datetime.now().strftime('%H:%M:%S')} | "
                         f"Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                         "Sun is out (altitude ~ 90°)."
                     )
+                    # DIEGO SERVO CODE IS PROB HERE 
+                    altitude_deg = 90
                 else:
                     print(
                         f"[Real {datetime.datetime.now().strftime('%H:%M:%S')} | "
                         f"Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                         "Moon is not visible (altitude = 0)."
                     )
+                    # DIEGO SERVO CODE IS PROB HERE 
+                    altitude_deg = 0
 
             # 3) Check for user commands in the queue
             while not command_queue.empty():
