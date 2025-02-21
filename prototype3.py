@@ -36,10 +36,6 @@ def setup_servo():
     pwm.start(0)
 '''
 def set_servo_angle(angle):
-    """
-    If you're using a servo, call this function to set a specific angle.
-    Requires that `pwm` is an already-set-up PWM object from RPi.GPIO.
-    """
     pwm = HardwarePWM(pwm_channel = 0, hz=50, chip=2)
     pwm.start(0)
 
@@ -92,10 +88,6 @@ DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
 
 def get_num_phases(target_cycle_length):
-    """
-    Scale each phase's length up or down to fit the user-defined cycle length.
-    Returns: (scaled_phases, new_total)
-    """
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
     scaled_phases = {}
 
