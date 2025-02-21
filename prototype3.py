@@ -134,7 +134,7 @@ def get_num_phases(target_cycle_length):
 
 def calculate_moonrise_times(target_cycle_length):
     """
-    Creates a list of dictionaries, one per day in the cycle,
+    creates a list of dictionaries, one per day in the cycle,
     with keys: [day, phase, moonrise_time, moonset_time, total_visibility].
     """
     scaled_phases, new_total_days = get_num_phases(target_cycle_length)
@@ -199,10 +199,7 @@ def calculate_moonrise_times(target_cycle_length):
 
 
 def find_schedule_entry_for_time(schedule, cycle_start_date, sim_time):
-    """
-    Return the schedule entry (day, phase, etc.) that covers `sim_time`.
-    None if no current visibility.
-    """
+    # returns the schedule entry (day, phase, etc.) that covers sim_time
     for entry in schedule:
         day_offset = entry['day']
         mr = entry['moonrise_time']
@@ -222,10 +219,6 @@ def find_schedule_entry_for_time(schedule, cycle_start_date, sim_time):
 
 
 def calculate_current_altitude(schedule_entry, specific_time, cycle_start_date):
-    """
-    Roughly calculates the moon's altitude as a simple sine arc from 0 to 90 degrees.
-    Returns 0 if out of that day's visible range or if it's a 'New Moon'.
-    """
     if schedule_entry['phase'] == 'New Moon':
         return -1
 
@@ -251,9 +244,6 @@ def calculate_current_altitude(schedule_entry, specific_time, cycle_start_date):
 
 
 def non_blocking_plot_moon_schedule_times(schedule):
-    """
-    Plots moonrise/moonset times (non-blocking).
-    """
     def to_decimal_hour(t):
         return t.hour + t.minute / 60.0 if t else None
 
@@ -287,9 +277,7 @@ def non_blocking_plot_moon_schedule_times(schedule):
     plt.show(block=False)
 
 def non_blocking_plot_moon_schedule_phases(schedule):
-    """
-    Plots the daily lunar phase index (non-blocking).
-    """
+
     days = []
     phase_indices = []
 
@@ -315,9 +303,6 @@ def non_blocking_plot_moon_schedule_phases(schedule):
     plt.show(block=False)
 
 def non_blocking_plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
-    """
-    Plots altitude from moonrise to moonset in increments of `marker_interval` (non-blocking).
-    """
     mr = schedule_entry['moonrise_time']
     ms = schedule_entry['moonset_time']
     if not mr or not ms:
@@ -370,11 +355,7 @@ def user_input_thread(command_queue):
             break
 
 
-def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_length,
-                                    update_interval_minutes=1, speed_factor=1.0):
-    """
-    Runs the simulation in the main thread, while the input thread collects user commands
-    """
+def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_length, update_interval_minutes=1, speed_factor=1.0):
     simulation_time = cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
 
