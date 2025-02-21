@@ -7,12 +7,18 @@ import datetime
 import threading
 from queue import Queue
 
+#servo
+from rpi_hardware_pwm import HardwarePWM
+import time
 
+
+# Matplotlib in interactive mode
 import matplotlib
 matplotlib.use("TkAgg")  # or another suitable backend
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+# Uncomment if you have a servo and GPIO
 # import RPi.GPIO as GPIO
 # from PIL import Image, ImageDraw, ImageFont
 # from waveshare_OLED import OLED_1in27_rgb
@@ -21,25 +27,29 @@ import matplotlib.dates as mdates
 # if os.path.exists(libdir):
 #     sys.path.append(libdir)
 
-plt.ion()  
+plt.ion()  # Enable interactive (non-blocking) mode for Matplotlib
 
 
-servo_pin = 24
+#servo_pin = 24
+'''
+def setup_servo():
+    pwm = HardwarePWM(pwm_channel = 0, hz=50, chip=2)
+    pwm.start(0)
+'''
+def set_servo_angle(angle):
+    """
+    If you're using a servo, call this function to set a specific angle.
+    Requires that `pwm` is an already-set-up PWM object from RPi.GPIO.
+    """
+    pwm = HardwarePWM(pwm_channel = 0, hz=50, chip=2)
+    pwm.start(0)
 
-# def setup_servo(pin):
-#     GPIO.setmode(GPIO.BCM)
-#     GPIO.setup(pin, GPIO.OUT)
-#     # Using frequency 50 Hz
-#     pwm = GPIO.PWM(pin, 50)
-#     pwm.start(0) 
-#     return pwm
+    duty_cycle = 2.6 + 6.5*(angle/180)
+    pwm.change_duty_cycle(duty_cycle)
+    #time.sleep(5)
+    return duty_cycle
 
-def set_servo_angle(pwm, angle):
-
-    duty_cycle = ((500 + (angle / 270) * 2000) / 20000) * 100  # Map angle to servo range (2% to 12%)
-    pwm.ChangeDutyCycle(duty_cycle)
-    time.sleep(0.5)  # Allow the servo to reach the position
-    pwm.ChangeDutyCycle(0)  # Stop sending signal to prevent jitter
+    
 #
 
 DEFAULT_LUNAR_CYCLE_LENGTH = 28
@@ -218,7 +228,6 @@ def find_schedule_entry_for_time(schedule, cycle_start_date, sim_time):
             set_dt += datetime.timedelta(days=1)
 
         if rise_dt <= sim_time < set_dt:
-            #print(f"THIS IS THE ENTRY{entry}")
             return entry
     return None
 
@@ -271,6 +280,7 @@ def non_blocking_plot_moon_schedule_times(schedule):
         rise_hours.append(to_decimal_hour(mr))
         set_hours.append(to_decimal_hour(ms))
 
+    # Optionally close previous windows if you prefer:
     # plt.close('all')
     plt.figure(figsize=(10,5))
     plt.plot(days, rise_hours, marker='o', label='Moonrise', color='blue')
@@ -408,12 +418,12 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
 
     try:
         while True:
-            #check if we're past the end of the cycle
+            # 1) Check if we're past the end of the cycle
             if simulation_time >= cycle_end_time:
                 print("Reached the end of the simulation!")
                 break
 
-            # simulation logic
+            # 2) Simulation logic
             current_entry = find_schedule_entry_for_time(schedule, cycle_start_date, simulation_time)
             if current_entry is not None:
                 altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
@@ -423,7 +433,9 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
                     f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
                     f"- Altitude: {altitude_deg:.1f}°"
                 )
-                # DIEGO SERVO CODE IS PROB HERE 
+                # DIEGO SERVO CODE IS PROB HERE
+                set_servo_angle(altitude_deg) 
+                print(f"Servo DC: {set_servo_angle(altitude_deg):.2f}% ")
             else:
                 # Possibly day time or no moon visible
                 if 6 <= simulation_time.hour < 18:
@@ -435,6 +447,8 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
                     )
                     # DIEGO SERVO CODE IS PROB HERE 
                     altitude_deg = 90
+                    set_servo_angle(altitude_deg)
+                    print(f"Servo DC: {set_servo_angle(altitude_deg):.2f}% ")
                 else:
                     print(
                         f"[Real {datetime.datetime.now().strftime('%H:%M:%S')} | "
@@ -443,6 +457,8 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
                     )
                     # DIEGO SERVO CODE IS PROB HERE 
                     altitude_deg = 0
+                    set_servo_angle(altitude_deg)
+                    print(f"Servo DC: {set_servo_angle(altitude_deg):.2f}% ")
 
             # 3) Check for user commands in the queue
             while not command_queue.empty():
@@ -472,7 +488,7 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
                     return
 
                 elif cmd == '':
-                    # an empty entry from pressing Enter
+                    # Just an empty entry from pressing Enter
                     pass
                 else:
                     print(f"Unknown command: {cmd}")
@@ -483,8 +499,8 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
             # advance simulation time
             simulation_time += datetime.timedelta(minutes=update_interval_minutes * speed_factor)
 
-            # keep Matplotlib windows alive and responsive
-            
+            # 6keep Matplotlib windows alive and responsive
+            #    This small pause ensures the GUI can update
             plt.pause(0.001)
 
     except KeyboardInterrupt:
@@ -495,26 +511,26 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
 
 
 if __name__ == "__main__":
-    # ask user for cycle length
+    # Ask user for cycle length
     raw_cycle_length = input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
     user_cycle_length = int(raw_cycle_length) if raw_cycle_length else DEFAULT_LUNAR_CYCLE_LENGTH
 
-    # create the schedule
+    # Create the schedule
     moon_schedule = calculate_moonrise_times(user_cycle_length)
 
-    # start date (now)
+    # Start date (now)
     cycle_start_date = datetime.datetime.now()
 
-    # ask user for speed factor
+    # Ask user for speed factor
     raw_speed = input("Enter a speed factor (default=1.0, e.g. 2.0=2x faster): ")
     speed_factor = float(raw_speed) if raw_speed else 1.0
 
-    # run the simulation (threaded input + non-blocking plots)
+    # Run the simulation (threaded input + non-blocking plots)
     start_simulation_with_threading(
         schedule=moon_schedule,
         cycle_start_date=cycle_start_date,
         user_cycle_length=user_cycle_length,
-        update_interval_minutes=1,  # small interval for quick demonstration
+        update_interval_minutes=0.1,  # small interval for quick demonstration
         speed_factor=speed_factor
     )
 
