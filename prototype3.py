@@ -371,9 +371,9 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
     print(f"Simulation End   (sim time): {cycle_end_time}")
     print(f"Speed factor     : {speed_factor}x")
     print("Type commands any time:\n"
-          "  pt  -> plot moonrise/moonset times (non-blocking)\n"
-          "  pp  -> plot moon phases (non-blocking)\n"
-          "  pa  -> plot hourly altitude for a specific day (non-blocking)\n"
+          "  pt  -> plot moonrise/moonset times\n"
+          "  pp  -> plot moon phases\n"
+          "  pa  -> plot hourly altitude for a specific day\n"
           "  q   -> quit simulation\n"
           "Hit Enter to post a command.\n")
 
@@ -425,11 +425,11 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
             while not command_queue.empty():
                 cmd = command_queue.get()
                 if cmd == 'pt':
-                    print("Plotting Moonrise/Moonset times (non-blocking)...")
+                    print("Plotting Moonrise/Moonset times...")
                     non_blocking_plot_moon_schedule_times(schedule)
 
                 elif cmd == 'pp':
-                    print("Plotting Moon schedule phases (non-blocking)...")
+                    print("Plotting Moon schedule phases...")
                     non_blocking_plot_moon_schedule_phases(schedule)
 
                 elif cmd == 'pa':
@@ -437,7 +437,7 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
                     if day_str.isdigit():
                         day_idx = int(day_str)
                         if 0 <= day_idx < len(schedule):
-                            print(f"Plotting altitude for day {day_idx} (non-blocking)...")
+                            print(f"Plotting altitude for day {day_idx}...")
                             non_blocking_plot_hourly_altitude(schedule[day_idx], cycle_start_date, marker_interval=30)
                         else:
                             print("Invalid day index!")
