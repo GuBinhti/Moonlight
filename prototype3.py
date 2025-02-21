@@ -12,9 +12,8 @@ from rpi_hardware_pwm import HardwarePWM
 import time
 
 
-# Matplotlib in interactive mode
 import matplotlib
-matplotlib.use("TkAgg")  # or another suitable backend
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
@@ -243,7 +242,7 @@ def calculate_current_altitude(schedule_entry, specific_time, cycle_start_date):
     return np.sin(progress * np.pi) * 90
 
 
-def non_blocking_plot_moon_schedule_times(schedule):
+def plot_moon_schedule_times(schedule):
     def to_decimal_hour(t):
         return t.hour + t.minute / 60.0 if t else None
 
@@ -274,9 +273,9 @@ def non_blocking_plot_moon_schedule_times(schedule):
     plt.legend()
 
     
-    plt.show(block=False)
+    #plt.show(block=False)
 
-def non_blocking_plot_moon_schedule_phases(schedule):
+def plot_moon_schedule_phases(schedule):
 
     days = []
     phase_indices = []
@@ -291,7 +290,7 @@ def non_blocking_plot_moon_schedule_phases(schedule):
             p_idx = -1
         phase_indices.append(p_idx)
 
-    # plt.close('all')
+    plt.close('all')
     plt.figure(figsize=(10,4))
     plt.scatter(days, phase_indices, marker='o', color='green')
     plt.yticks(range(len(LUNAR_PHASES)), LUNAR_PHASES)
@@ -300,9 +299,9 @@ def non_blocking_plot_moon_schedule_phases(schedule):
     plt.title("Lunar Phase by Day")
     plt.grid(True)
 
-    plt.show(block=False)
+    #plt.show(block=False)
 
-def non_blocking_plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
+def plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
     mr = schedule_entry['moonrise_time']
     ms = schedule_entry['moonset_time']
     if not mr or not ms:
@@ -325,7 +324,7 @@ def non_blocking_plot_hourly_altitude(schedule_entry, cycle_start_date, marker_i
         altitudes.append(alt)
         current += datetime.timedelta(minutes=marker_interval)
 
-    # plt.close('all')
+    plt.close('all')
     plt.figure(figsize=(10,5))
     plt.plot(time_points, altitudes, color='purple')
     plt.scatter(time_points, altitudes, color='red', s=20)
@@ -343,26 +342,29 @@ def non_blocking_plot_hourly_altitude(schedule_entry, cycle_start_date, marker_i
     plt.ylim(0, 100)
     plt.grid(True, alpha=0.3)
 
-    plt.show(block=False)
+    #plt.show(block=False)
 
 
 
 def user_input_thread(command_queue):
     while True:
         cmd = input().strip().lower()
-        command_queue.put(cmd)
+        if cmd == "pa":
+            day_str = input("Enter a day index [0, N-1] to plot the altitude")
+            command_queue.put(('pa', day_str))
+        else:
+            command_queue.put((cmd, None))
         if cmd == 'q':
             break
 
 
-def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_length, update_interval_minutes=1, speed_factor=1.0):
+def start_simulation(schedule, cycle_start_date, user_cycle_length, update_interval_minutes=1, speed_factor=1.0):
     simulation_time = cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
 
     # create a queue to receive commands from the user
     command_queue = Queue()
 
-    # Start the input thread as a daemon so it doesn't block program exit
     t = threading.Thread(target=user_input_thread, args=(command_queue,), daemon=True)
     t.start()
 
@@ -389,7 +391,7 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
             if current_entry is not None:
                 altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
                 print(
-                    f"[Real {datetime.datetime.now().strftime('%H:%M:%S')} | "
+                    #f"[Real {datetime.datetime.now().strftime('%H:%M:%S')} | "
                     f"Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                     f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
                     f"- Altitude: {altitude_deg:.1f}°"
@@ -423,22 +425,22 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
 
             # 3) Check for user commands in the queue
             while not command_queue.empty():
-                cmd = command_queue.get()
+                cmd, arg = command_queue.get()
                 if cmd == 'pt':
                     print("Plotting Moonrise/Moonset times...")
-                    non_blocking_plot_moon_schedule_times(schedule)
+                    plot_moon_schedule_times(schedule)
 
                 elif cmd == 'pp':
                     print("Plotting Moon schedule phases...")
-                    non_blocking_plot_moon_schedule_phases(schedule)
+                    plot_moon_schedule_phases(schedule)
 
                 elif cmd == 'pa':
-                    day_str = input("Enter day index [0..N-1] to plot altitude: ").strip()
+                    day_str = arg
                     if day_str.isdigit():
                         day_idx = int(day_str)
                         if 0 <= day_idx < len(schedule):
                             print(f"Plotting altitude for day {day_idx}...")
-                            non_blocking_plot_hourly_altitude(schedule[day_idx], cycle_start_date, marker_interval=30)
+                            plot_hourly_altitude(schedule[day_idx], cycle_start_date, marker_interval=30)
                         else:
                             print("Invalid day index!")
                     else:
@@ -459,8 +461,7 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
             # advance simulation time
             simulation_time += datetime.timedelta(minutes=update_interval_minutes * speed_factor)
 
-            # 6keep Matplotlib windows alive and responsive
-            #    This small pause ensures the GUI can update
+            # keep Matplotlib windows alive and responsive
             plt.pause(0.001)
 
     except KeyboardInterrupt:
@@ -482,7 +483,7 @@ if __name__ == "__main__":
     raw_speed = input("Enter a speed factor (default=1.0, e.g. 2.0=2x faster): ")
     speed_factor = float(raw_speed) if raw_speed else 1.0
 
-    start_simulation_with_threading(
+    start_simulation(
         schedule=moon_schedule,
         cycle_start_date=cycle_start_date,
         user_cycle_length=user_cycle_length,
