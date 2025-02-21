@@ -449,7 +449,6 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
                     return
 
                 elif cmd == '':
-                    # Just an empty entry from pressing Enter
                     pass
                 else:
                     print(f"Unknown command: {cmd}")
@@ -472,21 +471,17 @@ def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_lengt
 
 
 if __name__ == "__main__":
-    # Ask user for cycle length
     raw_cycle_length = input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
     user_cycle_length = int(raw_cycle_length) if raw_cycle_length else DEFAULT_LUNAR_CYCLE_LENGTH
 
-    # Create the schedule
+    # creates the full schedule for the lunar schedule
     moon_schedule = calculate_moonrise_times(user_cycle_length)
 
-    # Start date (now)
     cycle_start_date = datetime.datetime.now()
 
-    # Ask user for speed factor
     raw_speed = input("Enter a speed factor (default=1.0, e.g. 2.0=2x faster): ")
     speed_factor = float(raw_speed) if raw_speed else 1.0
 
-    # Run the simulation (threaded input + non-blocking plots)
     start_simulation_with_threading(
         schedule=moon_schedule,
         cycle_start_date=cycle_start_date,
