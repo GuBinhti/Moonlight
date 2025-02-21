@@ -18,8 +18,7 @@ matplotlib.use("TkAgg")  # or another suitable backend
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-# Uncomment if you have a servo and GPIO
-# import RPi.GPIO as GPIO
+
 # from PIL import Image, ImageDraw, ImageFont
 # from waveshare_OLED import OLED_1in27_rgb
 # picdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'pic')
@@ -27,7 +26,7 @@ import matplotlib.dates as mdates
 # if os.path.exists(libdir):
 #     sys.path.append(libdir)
 
-plt.ion()  # Enable interactive (non-blocking) mode for Matplotlib
+plt.ion()  
 
 
 #servo_pin = 24
@@ -88,7 +87,6 @@ MoonPhaseChecker = {
     'Waxing Gibbous':  'o'
 }
 
-# Roughly 50 minutes later each day in the real world, scaled to 28 days vs. 29.5 days
 DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
 
@@ -96,8 +94,7 @@ DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 def get_num_phases(target_cycle_length):
     """
     Scale each phase's length up or down to fit the user-defined cycle length.
-    Returns:
-      (scaled_phases, new_total)
+    Returns: (scaled_phases, new_total)
     """
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
     scaled_phases = {}
@@ -280,7 +277,7 @@ def non_blocking_plot_moon_schedule_times(schedule):
         rise_hours.append(to_decimal_hour(mr))
         set_hours.append(to_decimal_hour(ms))
 
-    # Optionally close previous windows if you prefer:
+    
     # plt.close('all')
     plt.figure(figsize=(10,5))
     plt.plot(days, rise_hours, marker='o', label='Moonrise', color='blue')
@@ -294,7 +291,7 @@ def non_blocking_plot_moon_schedule_times(schedule):
     plt.grid(True)
     plt.legend()
 
-    # Show in non-blocking mode
+    
     plt.show(block=False)
 
 def non_blocking_plot_moon_schedule_phases(schedule):
@@ -374,14 +371,6 @@ def non_blocking_plot_hourly_altitude(schedule_entry, cycle_start_date, marker_i
 
 
 def user_input_thread(command_queue):
-    """
-    Continuously waits for user input and puts the commands into the queue.
-    Type:
-      pt  -> plot moonrise/moonset times
-      pp  -> plot phases
-      pa  -> plot altitude for a day
-      q   -> quit simulation
-    """
     while True:
         cmd = input().strip().lower()
         command_queue.put(cmd)
@@ -392,13 +381,12 @@ def user_input_thread(command_queue):
 def start_simulation_with_threading(schedule, cycle_start_date, user_cycle_length,
                                     update_interval_minutes=1, speed_factor=1.0):
     """
-    Runs the simulation in the main thread, while the input thread
-    collects user commands. Uses non-blocking matplotlib windows.
+    Runs the simulation in the main thread, while the input thread collects user commands
     """
     simulation_time = cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
 
-    # Create a Queue to receive commands from the user
+    # create a queue to receive commands from the user
     command_queue = Queue()
 
     # Start the input thread as a daemon so it doesn't block program exit
