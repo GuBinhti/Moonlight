@@ -7,7 +7,7 @@ import datetime
 import threading
 from queue import Queue
 
-#from rpi_hardware_pwm import HardwarePWM
+from rpi_hardware_pwm import HardwarePWM
 import time
 
 import matplotlib
@@ -57,12 +57,12 @@ MoonPhaseChecker = {
 DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
 
-# def set_servo_angle(angle):
-#     pwm = HardwarePWM(pwm_channel=0, hz=50, chip=2)
-#     pwm.start(0)
-#     duty_cycle = 2.6 + 6.5 * (angle / 180.0)
-#     pwm.change_duty_cycle(duty_cycle)
-#     return duty_cycle
+def set_servo_angle(angle):
+    pwm = HardwarePWM(pwm_channel=0, hz=50, chip=2)
+    pwm.start(0)
+    duty_cycle = 2.6 + 6.5 * (angle / 180.0)
+    pwm.change_duty_cycle(duty_cycle)
+    return duty_cycle
 
 
 def get_num_phases(target_cycle_length):
@@ -342,7 +342,7 @@ def start_simulation(
     :param day_length_in_real_seconds: how many real seconds = 24 sim hours
     """
 
-    # Real seconds per simulated minute (baseline, i.e. speed_factor=1)
+    # Real seconds per simulated minute 
     # 24 sim-hours = 24*60 sim-minutes
     real_secs_per_sim_minute = day_length_in_real_seconds / (24 * 60)
 
@@ -369,12 +369,12 @@ def start_simulation(
 
     try:
         while True:
-            # 1) Check if we're past the end of the cycle
+            # check if we're past the end of the cycle
             if simulation_time >= cycle_end_time:
                 print("Reached the end of the simulation!")
                 break
 
-            # 2) Simulation logic
+            # simulation logic
             current_entry = find_schedule_entry_for_time(schedule, cycle_start_date, simulation_time)
             if current_entry is not None:
                 altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
@@ -384,8 +384,8 @@ def start_simulation(
                     f"- Altitude: {altitude_deg:.1f}°"
                 )
                 # SERVO CODE
-                # dc = set_servo_angle(altitude_deg)
-                # print(f"Servo DC: {dc:.2f}% ")
+                dc = set_servo_angle(altitude_deg)
+                print(f"Servo DC: {dc:.2f}% ")
             else:
                 # Possibly day time or no moon visible
                 if 6 <= simulation_time.hour < 18:
@@ -395,8 +395,8 @@ def start_simulation(
                         f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                         f"Sun is out (altitude ~ {altitude_deg}°)."
                     )
-                    # dc = set_servo_angle(altitude_deg)
-                    # print(f"Servo DC: {dc:.2f}% ")
+                    dc = set_servo_angle(altitude_deg)
+                    print(f"Servo DC: {dc:.2f}% ")
                 else:
                     # Moon is not visible
                     altitude_deg = 0
@@ -404,10 +404,10 @@ def start_simulation(
                         f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                         "Moon is not visible (altitude = 0)."
                     )
-                    # dc = set_servo_angle(altitude_deg)
-                    # print(f"Servo DC: {dc:.2f}% ")
+                    dc = set_servo_angle(altitude_deg)
+                    print(f"Servo DC: {dc:.2f}% ")
 
-            # 3) Check for user commands in the queue
+            # check for user commands in the queue
             while not command_queue.empty():
                 cmd, arg = command_queue.get()
                 if cmd == 'pt':
@@ -440,17 +440,14 @@ def start_simulation(
                     print(f"Unknown command: {cmd}")
 
             # If update_interval_minutes=1, we want to skip 1 sim-min in time
-            # and sleep real_secs_per_sim_minute / speed_factor in real time.
-            # If update_interval_minutes=10, multiply that times the baseline.
+            # and sleep real_secs_per_sim_minute / speed_factor in real time
+            # If update_interval_minutes=10, multiply that times the baseline
             real_time_to_sleep = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
             time.sleep(real_time_to_sleep)
 
             # Advance the simulation clock by the chosen sim-minutes
-            # (we no longer multiply by speed_factor here!)
-
             simulation_time += datetime.timedelta(minutes=update_interval_minutes)
 
-            # Keep Matplotlib windows responsive
             plt.pause(0.001)
 
     except KeyboardInterrupt:
@@ -482,7 +479,7 @@ if __name__ == "__main__":
         schedule=moon_schedule,
         cycle_start_date=cycle_start_date,
         user_cycle_length=user_cycle_length,
-        update_interval_minutes=1,  # e.g. small steps for demonstration
+        update_interval_minutes=2,  # e.g. small steps for demonstration
         speed_factor=speed_factor,
         day_length_in_real_seconds=day_length_in_real_seconds
     )
