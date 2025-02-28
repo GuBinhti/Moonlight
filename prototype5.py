@@ -460,7 +460,7 @@ def main():
             moon_schedule,         # schedule
             cycle_start_date,      # start date
             user_cycle_length,     # cycle length in sim-days
-            2,                     # update_interval_minutes (small steps)
+            1,                     # update_interval_minutes (small steps)
             speed_factor,          # speed factor
             day_length_in_real_seconds,
             stop_event
@@ -473,10 +473,12 @@ def main():
     print("Commands:\n"
           "  pt  -> plot moonrise/moonset times\n"
           "  pp  -> plot moon schedule phases\n"
+          "  pi  -> plot moon irradiances\n"
           "  pa  -> plot hourly altitude for a specific day\n"
           "  q   -> quit simulation\n"
           "Hit Enter to send commands.\n")
 
+    # main loop does commands and do small sleeps
     while not stop_event.is_set():
         # do any pending commands
         while not command_queue.empty():
