@@ -10,7 +10,7 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-#from rpi_hardware_pwm import HardwarePWM
+from rpi_hardware_pwm import HardwarePWM
 
 SUNSET_HOUR  = 18
 SUNRISE_HOUR = 6
@@ -52,15 +52,15 @@ MoonPhaseChecker = {
 DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
 
-# def set_servo_angle(angle):
-#     """
-#     Set servo to the given angle (0-180). Returns the duty cycle used.
-#     """
-#     pwm = HardwarePWM(pwm_channel=0, hz=50, chip=2)
-#     pwm.start(0)
-#     duty_cycle = 2.6 + 6.5 * (angle / 180.0)
-#     pwm.change_duty_cycle(duty_cycle)
-#     return duty_cycle
+def set_servo_angle(angle):
+    """
+    Set servo to the given angle (0-180). Returns the duty cycle used.
+    """
+    pwm = HardwarePWM(pwm_channel=0, hz=50, chip=2)
+    pwm.start(0)
+    duty_cycle = 2.6 + 6.5 * (angle / 180.0)
+    pwm.change_duty_cycle(duty_cycle)
+    return duty_cycle
 
 def get_num_phases(target_cycle_length):
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
@@ -364,23 +364,23 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length, update_interv
                   f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
                   f"- Altitude: {altitude_deg:.1f}°"
                   f"- Phase Angle: {phase_angle:.2f}")
-            # dc = set_servo_angle(altitude_deg)
-            # print(f"Servo DC: {dc:.2f}% ")
+            dc = set_servo_angle(altitude_deg)
+            print(f"Servo DC: {dc:.2f}% ")
         else:
             if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
                 # Sun is up
                 altitude_deg = 90
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       f"Sun is out (alt={altitude_deg}°).")
-                # dc = set_servo_angle(altitude_deg)
-                # print(f"Servo DC: {dc:.2f}% ")
+                dc = set_servo_angle(altitude_deg)
+                print(f"Servo DC: {dc:.2f}% ")
             else:
                 # Moon not visible
                 altitude_deg = 0
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       "Moon not visible (alt=0).")
-                # dc = set_servo_angle(altitude_deg)
-                # print(f"Servo DC: {dc:.2f}% ")
+                dc = set_servo_angle(altitude_deg)
+                print(f"Servo DC: {dc:.2f}% ")
 
         
         real_time_to_sleep = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
