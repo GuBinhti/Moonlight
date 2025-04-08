@@ -1,15 +1,16 @@
+import socket
+import threading
 import time
 import math
 import datetime
-import threading
 from queue import Queue
-import socket
 
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+
 from rpi_hardware_pwm import HardwarePWM
 
 SUNSET_HOUR  = 18
@@ -50,10 +51,38 @@ MoonPhaseChecker = {
 }
 
 DEFAULT_LATER_PER_DAY = (50 * 28) / 29
+CLIENT_CONN = None  
+stop_event = threading.Event()
+
+def server_print(msg: str):
+
+    #send a msg to both server and client
+
+    print(msg)  # Prints to server console
+    if CLIENT_CONN:
+        try:
+            CLIENT_CONN.sendall((msg + "\n").encode("utf-8"))
+        except:
+            pass 
+def get_input(prompt: str) -> str:
+    #send a prompt to client then you read a single line from client
+    server_print(prompt)
+    if CLIENT_CONN:
+        data = []
+        while True:
+            chunk = CLIENT_CONN.recv(1)
+            if not chunk:
+                return ""  # disconnected
+            if chunk in (b"\n", b"\r"):
+                break
+            data.append(chunk)
+        return b"".join(data).decode("utf-8").strip()
+    return ""
 
 def set_servo_angle(angle):
     """
-    Set servo to the given angle (0-180). Returns the duty cycle used.
+    Set a servo to the given angle (0-180) using rpi_hardware_pwm. 
+    Returns the duty cycle used.
     """
     pwm = HardwarePWM(pwm_channel=0, hz=50, chip=2)
     pwm.start(0)
@@ -83,9 +112,9 @@ def get_num_phases(target_cycle_length):
 
     new_total = sum(scaled_phases.values())
 
-    # Adjust if sum doesn't match target
     if new_total != target_cycle_length:
         if new_total > target_cycle_length:
+            # Reduce days from 'o' phases
             for phase in MoonPhaseChecker:
                 if MoonPhaseChecker[phase] == 'o' and scaled_phases[phase] > 0:
                     scaled_phases[phase] -= 1
@@ -93,6 +122,7 @@ def get_num_phases(target_cycle_length):
                     if new_total == target_cycle_length:
                         break
         else:
+            # Add days to 'o' phases
             for phase in MoonPhaseChecker:
                 if MoonPhaseChecker[phase] == 'o':
                     scaled_phases[phase] += 1
@@ -101,6 +131,14 @@ def get_num_phases(target_cycle_length):
                         break
 
     return scaled_phases, new_total
+
+def set_moon_phase_angle(day, cycle_length):
+    if day < 0:
+        day = 0
+    if day > cycle_length:
+        day = cycle_length
+    y = (day + cycle_length / 2.0) % cycle_length
+    return 180 * (1.0 - abs(1.0 - 2.0 * y / cycle_length))
 
 def calculate_moonrise_times(target_cycle_length):
     scaled_phases, new_total_days = get_num_phases(target_cycle_length)
@@ -165,15 +203,6 @@ def calculate_moonrise_times(target_cycle_length):
 
     return results
 
-def set_moon_phase_angle(day, cycle_length):
-    # Make sure day is within [0, cycle_length], to avoid negative or overshoot
-    if day < 0:
-        day = 0
-    if day > cycle_length:
-        day = cycle_length
-    y = (day + cycle_length / 2.0) % cycle_length
-    return 180 * (1.0 - abs(1.0 - 2.0 * y / cycle_length))
-
 def find_schedule_entry_for_time(schedule, cycle_start_date, sim_time):
     for entry in schedule:
         day_offset = entry['day']
@@ -214,27 +243,13 @@ def calculate_current_altitude(schedule_entry, specific_time, cycle_start_date):
     progress = time_since_rise / total_vis
     return 90.0 * (1.0 - np.cos(np.pi * progress))
 
-
-def plot_moon_phase_angle(schedule):
-    days = [entry['day'] for entry in schedule]
-    angle  = [entry['phase_angle'] for entry in schedule]
-
-    plt.figure(figsize=(8,4))
-    plt.plot(days, angle, marker='o')
-    plt.title("Moon Phase Angle Over Lunar Month")
-    plt.xlabel("Day in Lunar Month")
-    plt.ylabel("Phase Angle")
-    plt.ylim(0, 190)  # a bit of padding
-    plt.grid(True, alpha=0.3)
-    plt.show(block=False)
-
 def plot_moon_schedule_times(schedule):
     def to_decimal_hour(t):
         return t.hour + t.minute / 60.0 if t else None
 
-    days        = []
-    rise_hours  = []
-    set_hours   = []
+    days = []
+    rise_hours = []
+    set_hours  = []
 
     for entry in schedule:
         day_label = entry['day'] + 1
@@ -245,14 +260,11 @@ def plot_moon_schedule_times(schedule):
         set_hours.append(to_decimal_hour(ms))
 
     plt.figure(figsize=(10,5))
-    plt.plot(days, rise_hours, marker='o', label='Moonrise')
-    plt.plot(days, set_hours,  marker='o', label='Moonset')
-    plt.title('Moonrise and Moonset Times')
-    plt.xlabel('Day in Lunar Cycle')
-    plt.ylabel('Time of Day (Hours)')
-    plt.xticks(range(1, max(days)+1))
-    plt.yticks(range(0, 25, 2))
-    plt.ylim(0, 24)
+    plt.plot(days, rise_hours, marker='o', label='Moonrise', color='blue')
+    plt.plot(days, set_hours,  marker='o', label='Moonset', color='red')
+    plt.title("Moonrise and Moonset Times")
+    plt.xlabel("Day in Lunar Cycle")
+    plt.ylabel("Time of Day (Hours)")
     plt.grid(True)
     plt.legend()
     plt.show(block=False)
@@ -272,19 +284,31 @@ def plot_moon_schedule_phases(schedule):
         phase_indices.append(p_idx)
 
     plt.figure(figsize=(10,4))
-    plt.scatter(days, phase_indices, marker='o')
+    plt.scatter(days, phase_indices, color='green')
     plt.yticks(range(len(LUNAR_PHASES)), LUNAR_PHASES)
     plt.xlabel("Day in Lunar Cycle")
     plt.ylabel("Lunar Phase")
+    plt.grid(True)
     plt.title("Lunar Phase by Day")
+    plt.show(block=False)
+
+def plot_moon_phase_angle(schedule):
+    days = [entry['day'] for entry in schedule]
+    angle = [entry['phase_angle'] for entry in schedule]
+
+    plt.figure(figsize=(8,4))
+    plt.plot(days, angle, color='blue', marker='o')
+    plt.title("Moon Phase Angle Over Lunar Month")
+    plt.xlabel("Day in Lunar Month")
+    plt.ylabel("Phase Angle")
     plt.grid(True)
     plt.show(block=False)
 
-def plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
+def plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=30):
     mr = schedule_entry['moonrise_time']
     ms = schedule_entry['moonset_time']
     if not mr or not ms:
-        print("No moon visibility for this day.")
+        server_print("No moon visibility for this day.")
         return
 
     entry_date = cycle_start_date + datetime.timedelta(days=schedule_entry['day'])
@@ -294,7 +318,7 @@ def plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
         moonset_dt += datetime.timedelta(days=1)
 
     time_points = []
-    altitudes   = []
+    altitudes = []
 
     current = moonrise_dt
     while current <= moonset_dt:
@@ -304,175 +328,135 @@ def plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
         current += datetime.timedelta(minutes=marker_interval)
 
     plt.figure(figsize=(10,5))
-    plt.plot(time_points, altitudes)
-    plt.scatter(time_points, altitudes, s=20)
-    plt.title(f"Hourly Altitude (Day {schedule_entry['day']} - {schedule_entry['phase']})")
+    plt.plot(time_points, altitudes, color='purple')
+    plt.scatter(time_points, altitudes, color='red')
     plt.xlabel("Time")
     plt.ylabel("Altitude (degrees)")
+    plt.grid(True)
+    plt.title(f"Hourly Altitude (Day {schedule_entry['day']} - {schedule_entry['phase']})")
 
     hours = mdates.HourLocator()
-    fmt   = mdates.DateFormatter('%H:%M')
+    fmt = mdates.DateFormatter('%H:%M')
     plt.gca().xaxis.set_major_locator(hours)
     plt.gca().xaxis.set_major_formatter(fmt)
     plt.gcf().autofmt_xdate()
 
-    plt.ylim(0, 200)
-    plt.grid(True, alpha=0.3)
     plt.show(block=False)
 
-
-
-def start_udp_server(host, port, command_queue, stop_event):
-    """
-    Listens on 'host':'port' for UDP messages. Any received message is treated
-    as a command. Puts (cmd, arg) into the command_queue for the main loop.
-    """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((host, port))
-    sock.settimeout(1.0)  # Non-blocking check
-    print(f"[UDP Server] Listening on {host}:{port}")
-
-    while not stop_event.is_set():
-        try:
-            data, addr = sock.recvfrom(1024)  # buffer size
-            cmd = data.decode().strip().lower()
-
-            # If a command includes arguments, e.g. "pa 5", parse them
-            parts = cmd.split()
-            if len(parts) > 1:
-                main_cmd = parts[0]
-                arg = parts[1]
-            else:
-                main_cmd = cmd
-                arg = None
-
-            # Put it into the shared command queue
-            command_queue.put((main_cmd, arg))
-
-            # Optionally, send back a confirmation
-            sock.sendto(f"Command '{cmd}' received from {addr}".encode(), addr)
-
-        except socket.timeout:
-            continue
-
-    sock.close()
-    print("[UDP Server] Stopped.")
-
 def simulation_loop(schedule, cycle_start_date, user_cycle_length, update_interval_minutes,
-                    speed_factor, day_length_in_real_seconds, stop_event):
-
+                   speed_factor, day_length_in_real_seconds, stop_event):
     real_secs_per_sim_minute = day_length_in_real_seconds / (24 * 60)
     simulation_time = cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
 
-    print("\n[Simulation Thread] Started.")
+    server_print("\n[Simulation Thread] Started.")
     while not stop_event.is_set():
         if simulation_time >= cycle_end_time:
-            print("[Simulation Thread] Reached end of the simulation.")
+            server_print("[Simulation Thread] Reached end of the simulation.")
             break
 
         current_entry = find_schedule_entry_for_time(schedule, cycle_start_date, simulation_time)
         if current_entry is not None:
             altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
             phase_angle = current_entry.get('phase_angle', 0.0)
-            print(
-                f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
-                f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
-                f"- Alt: {altitude_deg:.1f}° "
-                f"- Phase Angle: {phase_angle:.2f}"
-            )
+            server_print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
+                         f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
+                         f"- Alt: {altitude_deg:.1f}° "
+                         f"- Phase Angle: {phase_angle:.2f}")
             dc = set_servo_angle(altitude_deg)
-            print(f"Servo DC: {dc:.2f}% ")
+            server_print(f"Servo DC: {dc:.2f}% ")
         else:
-            # If the Moon isn't currently visible, check if Sun might be up.
+            # If we don't find a relevant schedule entry, see if sun is up
             if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
-                # Sun is up
                 altitude_deg = 90
-                print(
-                    f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
-                    f"Sun is out (alt={altitude_deg}°)."
-                )
+                server_print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] Sun is out (alt={altitude_deg}°).")
                 dc = set_servo_angle(altitude_deg)
+                server_print(f"Servo DC: {dc:.2f}% ")
             else:
-                # Moon not visible
                 altitude_deg = 0
-                print(
-                    f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
-                    "Moon not visible (alt=0)."
-                )
+                server_print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] Moon not visible (alt=0).")
                 dc = set_servo_angle(altitude_deg)
+                server_print(f"Servo DC: {dc:.2f}% ")
 
-        # Sleep for the correct real time to simulate 'update_interval_minutes'
         real_time_to_sleep = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
         time.sleep(real_time_to_sleep)
-
-        # Advance simulation time
         simulation_time += datetime.timedelta(minutes=update_interval_minutes)
 
-    print("[Simulation Thread] Exiting...")
+    server_print("[Simulation Thread] Exiting...")
 
+def handle_command(cmd: str, schedule, cycle_start_date):
+    parts = cmd.strip().split()
+    if not parts:
+        return
 
-def handle_command(cmd, arg, schedule, cycle_start_date, stop_event):
-    """
-    Interpret and execute commands. 
-      pt   -> Plot moonrise/moonset times
-      pp   -> Plot moon schedule phases
-      pang -> Plot moon phase angles
-      pa   -> Plot hourly altitude for a specific day
-      q    -> Quit
-    """
-    if cmd == 'pt':
-        print("Plotting Moonrise/Moonset times...")
+    primary = parts[0].lower()
+
+    if primary == 'pt':
+        server_print("Plotting Moonrise/Moonset times...")
         plot_moon_schedule_times(schedule)
 
-    elif cmd == 'pp':
-        print("Plotting Moon schedule phases...")
+    elif primary == 'pp':
+        server_print("Plotting Moon schedule phases...")
         plot_moon_schedule_phases(schedule)
 
-    elif cmd == 'pang':
-        print("Plotting Moon Phase Angles...")
+    elif primary == 'pang':
+        server_print("Plotting Moon Phase Angles...")
         plot_moon_phase_angle(schedule)
 
-    elif cmd == 'pa':
-        # 'pa' expects an argument (day index)
-        if arg and arg.isdigit():
-            day_idx = int(arg)
+    elif primary == 'pa':
+        if len(parts) > 1 and parts[1].isdigit():
+            day_idx = int(parts[1])
             if 0 <= day_idx < len(schedule):
-                print(f"Plotting altitude for day {day_idx}...")
+                server_print(f"Plotting altitude for day {day_idx}...")
                 plot_hourly_altitude(schedule[day_idx], cycle_start_date, marker_interval=30)
             else:
-                print("Invalid day index!")
+                server_print("Invalid day index!")
         else:
-            print("Usage: 'pa <dayIndex>' (0 <= dayIndex < length_of_schedule)")
+            server_print("Usage: pa <dayIndex>")
 
-    elif cmd == 'q':
-        print("[Main Thread] User requested quit.")
+    elif primary == 'q':
+        server_print("[Main Thread] User requested quit.")
         stop_event.set()
 
-    elif cmd == '':
-        pass
     else:
-        print(f"[Main Thread] Unknown command: {cmd}")
+        server_print(f"[Main Thread] Unknown command: {primary}")
 
-def main():
-    raw_cycle_length = input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
-    user_cycle_length = int(raw_cycle_length) if raw_cycle_length else DEFAULT_LUNAR_CYCLE_LENGTH
+def main_server():
+    global CLIENT_CONN
 
+    HOST = '127.0.0.1'
+    PORT = 12345
+
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_sock.bind((HOST, PORT))
+    server_sock.listen(1)
+
+    print(f"Server listening on {HOST}:{PORT}")
+    CLIENT_CONN, addr = server_sock.accept()
+    print(f"Accepted connection from {addr}")
+    server_print(f"Welcome! You are connected from {addr}.\n")
+
+    raw_cycle_length = get_input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
+    if raw_cycle_length.isdigit():
+        user_cycle_length = int(raw_cycle_length)
+    else:
+        user_cycle_length = DEFAULT_LUNAR_CYCLE_LENGTH
 
     moon_schedule = calculate_moonrise_times(user_cycle_length)
     cycle_start_date = datetime.datetime.now()
 
-    raw_speed = input("Enter a speed factor (default=1.0, e.g. 2.0=2x faster): ")
-    speed_factor = float(raw_speed) if raw_speed else 1.0
+    raw_speed = get_input("Enter a speed factor (default=1.0, e.g. 2.0=2x faster): ")
+    try:
+        speed_factor = float(raw_speed)
+    except:
+        speed_factor = 1.0
 
-    raw_day_length = input("Enter real-time seconds for 24-hour sim-day (default=86400 = 24h): ")
-    if raw_day_length.strip():
+    raw_day_length = get_input("Enter real-time seconds for 24-hour sim-day (default=86400): ")
+    try:
         day_length_in_real_seconds = float(raw_day_length)
-    else:
+    except:
         day_length_in_real_seconds = 86400.0
-
-
-    stop_event = threading.Event()
 
     sim_thread = threading.Thread(
         target=simulation_loop,
@@ -480,7 +464,7 @@ def main():
             moon_schedule,
             cycle_start_date,
             user_cycle_length,
-            1,  # update_interval_minutes
+            1, 
             speed_factor,
             day_length_in_real_seconds,
             stop_event
@@ -489,36 +473,33 @@ def main():
     )
     sim_thread.start()
 
+    server_print("\n[Main Thread] Simulation started in background.\n"
+                 "Commands:\n"
+                 "  pt        -> plot moonrise/moonset times\n"
+                 "  pp        -> plot moon schedule phases\n"
+                 "  pang      -> plot moon phase angles\n"
+                 "  pa <day>  -> plot hourly altitude for a specific day\n"
+                 "  q         -> quit simulation\n")
 
-    command_queue = Queue()
-    udp_server_thread = threading.Thread(
-        target=start_udp_server,
-        args=("0.0.0.0", 50000, command_queue, stop_event),
-        daemon=True
-    )
-    udp_server_thread.start()
-
-    print("\n[Main Thread] Simulation + UDP server started in background.")
-    print("Send UDP commands to this server on port 50000. For example:\n"
-          "  pt      -> plot moonrise/moonset times\n"
-          "  pp      -> plot moon schedule phases\n"
-          "  pang    -> plot moon phase angles\n"
-          "  pa 0    -> plot hourly altitude for day 0\n"
-          "  q       -> quit simulation\n")
-
-
-    while not stop_event.is_set():
-        while not command_queue.empty():
-            cmd, arg = command_queue.get()
-            handle_command(cmd, arg, moon_schedule, cycle_start_date, stop_event)
-
-
-        plt.pause(0.01)
-        time.sleep(0.1)
-
-    sim_thread.join()
-    udp_server_thread.join()
-    print("[Main Thread] All threads joined. Exiting.")
+    try:
+        while not stop_event.is_set():
+            data = CLIENT_CONN.recv(1024)
+            if not data:
+                break
+            lines = data.decode("utf-8").split("\n")
+            for line in lines:
+                line = line.strip()
+                if line:
+                    handle_command(line, moon_schedule, cycle_start_date)
+    except ConnectionResetError:
+        pass
+    finally:
+        stop_event.set()
+        sim_thread.join()
+        if CLIENT_CONN:
+            CLIENT_CONN.close()
+        server_sock.close()
+        print("[Main Thread] Exiting server.")
 
 if __name__ == "__main__":
-    main()
+    main_server()
