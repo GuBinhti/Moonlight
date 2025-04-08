@@ -1,49 +1,51 @@
 import socket
+import sys
+import threading
 
-def main():
-    server_host = input("Enter server IP address (default=127.0.0.1): ").strip()
-    if not server_host:
-        server_host = "127.0.0.1"
-
-    server_port_str = input("Enter server UDP port (default=50000): ").strip()
-    if server_port_str:
-        server_port = int(server_port_str)
-    else:
-        server_port = 50000
-
-    print(f"Sending commands to {server_host}:{server_port} via UDP.\n"
-          "Commands:\n"
-          "  pt   -> plot moonrise/moonset times\n"
-          "  pp   -> plot moon schedule phases\n"
-          "  pang -> plot moon phase angles\n"
-          "  pa X -> plot altitude for day X\n"
-          "  q    -> quit simulation\n")
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def read_from_server(sock):
+    #keep reading datra from server socket and print to client console
 
     try:
         while True:
-            cmd = input("Enter command (or 'q' to quit server): ").strip()
-            if not cmd:
-                continue
-
-            # Send command to server
-            sock.sendto(cmd.encode(), (server_host, server_port))
-
-            # If user typed "q", let's also exit client after sending
-            if cmd.lower() == 'q':
-                print("Exiting client.")
+            data = sock.recv(1024)
+            if not data:
                 break
+            print(data.decode("utf-8"), end='')
+    except ConnectionError:
+        pass
+    finally:
+        print("\n[Client] Connection to the server closed.")
 
-            sock.settimeout(2.0)
-            try:
-                data, addr = sock.recvfrom(1024)
-                print(f"[Server Response] {data.decode()}")
-            except socket.timeout:
-                print("[No response from server, continuing...]")
+def main():
+    host = '127.0.0.1'
+    port = 12345
 
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, port))
+        print(f"[Client] Connected to server at {host}:{port}")
+    except Exception as e:
+        print(f"[Client] Could not connect to {host}:{port} -> {e}")
+        sys.exit(1)
+
+    read_thread = threading.Thread(target=read_from_server, args=(sock,), daemon=True)
+    read_thread.start()
+
+    # read lines from the client and send toserver
+    try:
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                break
+            sock.sendall(line.encode("utf-8"))
+
+            if line.strip().lower() == 'q':
+                break
+    except KeyboardInterrupt:
+        pass
     finally:
         sock.close()
+        read_thread.join()
 
 if __name__ == "__main__":
     main()
