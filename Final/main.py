@@ -3,14 +3,20 @@ import math
 import datetime
 import threading
 from queue import Queue
-
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-
+import os
+import sys
+from waveshare_OLED import OLED_1in27_rgb
+picdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'pic')
+libdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'lib')
+if os.path.exists(libdir):
+    sys.path.append(libdir)
 from rpi_hardware_pwm import HardwarePWM
+
 
 SUNSET_HOUR  = 18
 SUNRISE_HOUR = 6
@@ -51,16 +57,13 @@ MoonPhaseChecker = {
 
 DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
-
 def set_servo_angle(angle):
-    """
-    Set servo to the given angle (0-180). Returns the duty cycle used.
-    """
     pwm = HardwarePWM(pwm_channel=0, hz=50, chip=2)
     pwm.start(0)
     duty_cycle = 2.6 + 6.5 * (angle / 180.0)
     pwm.change_duty_cycle(duty_cycle)
     return duty_cycle
+
 
 def get_num_phases(target_cycle_length):
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
@@ -104,6 +107,7 @@ def get_num_phases(target_cycle_length):
                         break
 
     return scaled_phases, new_total
+
 
 def calculate_moonrise_times(target_cycle_length):
     scaled_phases, new_total_days = get_num_phases(target_cycle_length)
@@ -168,9 +172,8 @@ def calculate_moonrise_times(target_cycle_length):
 
     return results
 
-def set_moon_phase_angle(day, cycle_length):
 
-    # Make sure day is within [0, cycle_length], to avoid negative or overshoot
+def set_moon_phase_angle(day, cycle_length):
     if day < 0:
         day = 0
     if day > cycle_length:
@@ -196,6 +199,7 @@ def find_schedule_entry_for_time(schedule, cycle_start_date, sim_time):
             return entry
     return None
 
+
 def calculate_current_altitude(schedule_entry, specific_time, cycle_start_date):
     if schedule_entry['phase'] == 'New Moon':
         return -1
@@ -219,8 +223,8 @@ def calculate_current_altitude(schedule_entry, specific_time, cycle_start_date):
     progress = time_since_rise / total_vis
     return 90.0 * (1.0 - np.cos(np.pi * progress))
 
-def plot_moon_phase_angle(schedule):
 
+def plot_moon_phase_angle(schedule):
     days = [entry['day'] for entry in schedule]
     angle  = [entry['phase_angle'] for entry in schedule]
 
@@ -229,17 +233,18 @@ def plot_moon_phase_angle(schedule):
     plt.title("Moon Phase Angle Over Lunar Month")
     plt.xlabel("Day in Lunar Month")
     plt.ylabel("Phase Angle")
-    plt.ylim(0, 190.05)  # small padding above 1
+    plt.ylim(0, 190.05)  # small padding above
     plt.grid(True, alpha=0.3)
     plt.show(block=False)
+
 
 def plot_moon_schedule_times(schedule):
     def to_decimal_hour(t):
         return t.hour + t.minute / 60.0 if t else None
 
-    days        = []
-    rise_hours  = []
-    set_hours   = []
+    days       = []
+    rise_hours = []
+    set_hours  = []
 
     for entry in schedule:
         day_label = entry['day'] + 1
@@ -261,6 +266,7 @@ def plot_moon_schedule_times(schedule):
     plt.grid(True)
     plt.legend()
     plt.show(block=False)
+
 
 def plot_moon_schedule_phases(schedule):
     days = []
@@ -284,6 +290,7 @@ def plot_moon_schedule_phases(schedule):
     plt.title("Lunar Phase by Day")
     plt.grid(True)
     plt.show(block=False)
+
 
 def plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
     mr = schedule_entry['moonrise_time']
@@ -326,28 +333,89 @@ def plot_hourly_altitude(schedule_entry, cycle_start_date, marker_interval=60):
     plt.show(block=False)
 
 
-def user_input_thread(command_queue):
-    """
-    Reads user input from stdin and pushes commands onto command_queue.
-    This runs in parallel, so it doesn't block the main thread or the sim thread.
-    """
+def prompt_int_with_skip(prompt, current_value):
     while True:
+        val = input(f"{prompt} (current={current_value}): ").strip()
+        if not val:  # skip
+            return None
+        try:
+            return int(val)
+        except ValueError:
+            print("Invalid input. Please enter a valid integer or press Enter to keep current value.")
+
+
+def prompt_float_with_skip(prompt, current_value):
+    while True:
+        val = input(f"{prompt} (current={current_value}): ").strip()
+        if not val:  # skip
+            return None
+        try:
+            return float(val)
+        except ValueError:
+            print("Invalid input. Please enter a valid float or press Enter to keep current value.")
+
+def prompt_hex_with_skip(prompt, current_value):
+    while True:
+        val = input(f"{prompt} (current={current_value}): ").strip()
+        if not val:  # skip
+            return None
+        try:
+            return decimal_to_hex(int(val, 16))
+        except ValueError:
+            print("Invalid input. Please enter a valid hex value or press Enter to keep current value.")
+
+def decimal_to_hex(decimal):
+    hex_value = hex(decimal)[2:].upper()
+    return hex_value.zfill(6)
+
+
+def user_input_thread(command_queue, state):
+    while True:
+        valid_commands = ["pt", "pp", "pang", "pa", "start", "change", "status", "q", ""]
         cmd = input().strip().lower()
+        if cmd not in valid_commands:
+            print("Unknown command. Valid commands:\n"
+                  " pt, pp, pang, pa, start, change, status, q")
+            continue
+
         if cmd == "pa":
-            day_str = input("Enter a day index [0, N-1] to plot the altitude: ")
+            day_str = input("Enter a day index [0, N-1] to plot the altitude: ").strip()
+            if not day_str.isdigit():
+                print("Invalid day index. Command aborted.")
+                continue
             command_queue.put(('pa', day_str))
+
+        elif cmd == "change":
+            print("[User Input Thread] Changing user options...")
+            new_cycle_length = prompt_int_with_skip("Enter new lunar cycle length", state['user_cycle_length'])
+            new_speed = prompt_float_with_skip("Enter new speed factor", state['speed_factor'])
+            new_day_length = prompt_float_with_skip("Enter new real-time seconds for 24-hour sim-day", state['day_length_in_real_seconds'])
+            new_hex_color = prompt_hex_with_skip("Enter new hex color", state['hex_color'])
+
+
+            command_queue.put(('change', (new_cycle_length, new_speed, new_day_length, new_hex_color)))
+
+        elif cmd == "status":
+            command_queue.put(('status', None))
+
         else:
             command_queue.put((cmd, None))
 
         if cmd == 'q':
             break
 
-def simulation_loop(schedule, cycle_start_date, user_cycle_length, update_interval_minutes, speed_factor, day_length_in_real_seconds, stop_event):
 
+def simulation_loop(schedule, cycle_start_date, user_cycle_length,
+                   update_interval_minutes, speed_factor,
+                   day_length_in_real_seconds,hex_color ,stop_event):
 
     real_secs_per_sim_minute = day_length_in_real_seconds / (24 * 60)
     simulation_time = cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
+    disp = OLED_1in27_rgb.OLED_1in27_rgb()
+    logging.info("\r1.27inch RGB OLED initializing...")
+    disp.Init()
+    disp.clear()
 
     print("\n[Simulation Thread] Started.")
     while not stop_event.is_set():  # loop until told to stop
@@ -355,7 +423,6 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length, update_interv
             print("[Simulation Thread] Reached end of the simulation.")
             break
 
- 
         current_entry = find_schedule_entry_for_time(schedule, cycle_start_date, simulation_time)
         if current_entry is not None:
             altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
@@ -368,51 +435,107 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length, update_interv
             print(f"Servo DC: {dc:.2f}% ")
         else:
             if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
-                # Sun is up
                 altitude_deg = 90
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       f"Sun is out (alt={altitude_deg}°).")
                 dc = set_servo_angle(altitude_deg)
                 print(f"Servo DC: {dc:.2f}% ")
             else:
-                # Moon not visible
                 altitude_deg = 0
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       "Moon not visible (alt=0).")
                 dc = set_servo_angle(altitude_deg)
                 print(f"Servo DC: {dc:.2f}% ")
 
-        
+        # Sleep in real-world time
         real_time_to_sleep = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
         time.sleep(real_time_to_sleep)
-
+        # Advance the simulation time
         simulation_time += datetime.timedelta(minutes=update_interval_minutes)
+        hex_color_h = '#' + hex_color
+        print(hex_color_h)
+        image = Image.new('RGB', (disp.width, disp.height), hex_color_h)
+        disp.ShowImage(disp.getbuffer(image))
 
     print("[Simulation Thread] Exiting...")
 
-def handle_command(cmd, arg, schedule, cycle_start_date, stop_event):
+
+def handle_command(cmd, arg, stop_event, state):
     if cmd == 'pt':
         print("Plotting Moonrise/Moonset times...")
-        plot_moon_schedule_times(schedule)
+        plot_moon_schedule_times(state['moon_schedule'])
 
     elif cmd == 'pp':
         print("Plotting Moon schedule phases...")
-        plot_moon_schedule_phases(schedule)
+        plot_moon_schedule_phases(state['moon_schedule'])
 
-    elif cmd =='pang':
+    elif cmd == 'pang':
         print("Plotting Moon Phase Angles...")
-        plot_moon_phase_angle(schedule)
+        plot_moon_phase_angle(state['moon_schedule'])
 
     elif cmd == 'pa':
         if arg and arg.isdigit():
             day_idx = int(arg)
-            if 0 <= day_idx < len(schedule):
+            if 0 <= day_idx < len(state['moon_schedule']):
                 print(f"Plotting altitude for day {day_idx}...")
-                plot_hourly_altitude(schedule[day_idx], cycle_start_date, marker_interval=30)
+                plot_hourly_altitude(state['moon_schedule'][day_idx],
+                                     state['cycle_start_date'],
+                                     marker_interval=30)
             else:
                 print("Invalid day index!")
         else:
             print("Please enter a valid integer for the day index.")
+
+    elif cmd == 'start':
+        if not state['simulation_started']:
+            print("[Main Thread] Starting simulation now...")
+            state['simulation_started'] = True
+
+            sim_thread = threading.Thread(
+                target=simulation_loop,
+                args=(
+                    state['moon_schedule'],
+                    state['cycle_start_date'],
+                    state['user_cycle_length'],
+                    .001,  # update_interval_minutes
+                    state['speed_factor'],
+                    state['day_length_in_real_seconds'],
+                    state['hex_color'],
+                    stop_event
+                ),
+                daemon=True
+            )
+            sim_thread.start()
+            state['simulation_thread'] = sim_thread
+        else:
+            print("[Main Thread] Simulation is already running.")
+
+    elif cmd == 'change':
+        new_cycle_length, new_speed, new_day_length, new_hex_color = arg
+        # If the user typed nothing, it's None -> keep old value
+        if new_cycle_length is not None:
+            state['user_cycle_length'] = new_cycle_length
+        if new_speed is not None:
+            state['speed_factor'] = new_speed
+        if new_day_length is not None:
+            state['day_length_in_real_seconds'] = new_day_length
+        if new_hex_color is not None:
+            state['hex_color'] = new_hex_color
+
+        # Recompute schedule
+        state['moon_schedule'] = calculate_moonrise_times(state['user_cycle_length'])
+        state['cycle_start_date'] = datetime.datetime.now()
+
+        print("[Main Thread] Options updated. You can plot again or type 'start' to run simulation.")
+
+    elif cmd == 'status':
+        print("[Main Thread] Current Simulation Parameters:")
+        print(f"  Cycle Length  : {state['user_cycle_length']}")
+        print(f"  Speed Factor  : {state['speed_factor']}")
+        print(f"  Day Length (s): {state['day_length_in_real_seconds']}")
+        print(f"  Hex Color     : {state['hex_color']}")
+        print(f"  Start Date    : {state['cycle_start_date']}")
+        print(f"  Sim Started?  : {state['simulation_started']}")
 
     elif cmd == 'q':
         print("[Main Thread] User requested quit.")
@@ -424,76 +547,62 @@ def handle_command(cmd, arg, schedule, cycle_start_date, stop_event):
         print(f"[Main Thread] Unknown command: {cmd}")
 
 
-
 def main():
-    # ssk user for cycle length
-    raw_cycle_length = input(f"Enter lunar cycle length (default={DEFAULT_LUNAR_CYCLE_LENGTH}): ")
-    user_cycle_length = int(raw_cycle_length) if raw_cycle_length else DEFAULT_LUNAR_CYCLE_LENGTH
+    user_cycle_length = DEFAULT_LUNAR_CYCLE_LENGTH
+    speed_factor = 1.0
+    day_length_in_real_seconds = 86400.0
+    hex_color = 'FF0000'  # Default color (red)
 
-    # compute schedule
+    # Build initial schedule
     moon_schedule = calculate_moonrise_times(user_cycle_length)
     cycle_start_date = datetime.datetime.now()
 
-    # speed factor for testing
-    raw_speed = input("Enter a speed factor (default=1.0, e.g. 2.0=2x faster): ")
-    speed_factor = float(raw_speed) if raw_speed else 1.0
+    # Shared state dictionary
+    state = {
+        'moon_schedule': moon_schedule,
+        'cycle_start_date': cycle_start_date,
+        'user_cycle_length': user_cycle_length,
+        'speed_factor': speed_factor,
+        'day_length_in_real_seconds': day_length_in_real_seconds,
+        'hex_color': hex_color,
+        'simulation_thread': None,
+        'simulation_started': False,
+    }
 
-    # real-time seconds for 24-hour sim-day
-    raw_day_length = input("Enter real-time seconds for 24-hour sim-day (default=86400 = 24h): ")
-    if raw_day_length.strip():
-        day_length_in_real_seconds = float(raw_day_length)
-    else:
-        day_length_in_real_seconds = 86400.0
-
-    # queue for commands, plus a user-input thread
+    # Create queue and threads
     command_queue = Queue()
-    input_thread = threading.Thread(target=user_input_thread, args=(command_queue,), daemon=True)
-    input_thread.start()
-
-    # stop_event to signal the simulation thread to quit
     stop_event = threading.Event()
 
-    # start the simulation thread
-    sim_thread = threading.Thread(
-        target=simulation_loop,
-        args=(
-            moon_schedule,         # schedule
-            cycle_start_date,      # start date
-            user_cycle_length,     # cycle length in sim-days
-            1,                     # update_interval_minutes (small steps)
-            speed_factor,          # speed factor
-            day_length_in_real_seconds,
-            stop_event
-        ),
+    # Pass state to user_input_thread so it can show current values in prompts
+    input_thread = threading.Thread(
+        target=user_input_thread,
+        args=(command_queue, state),
         daemon=True
     )
-    sim_thread.start()
+    input_thread.start()
 
-    print("\n[Main Thread] Simulation started in background.")
-    print("Commands:\n"
-          "  pt  -> plot moonrise/moonset times\n"
-          "  pp  -> plot moon schedule phases\n"
-          "  pang  -> plot moon phase angles\n"
-          "  pa  -> plot hourly altitude for a specific day\n"
-          "  q   -> quit simulation\n"
-          "Hit Enter to send commands.\n")
+    print("[Main Thread] Ready. Type commands in the console:\n"
+          "  pt       -> plot moonrise/moonset times\n"
+          "  pp       -> plot moon schedule phases\n"
+          "  pang     -> plot moon phase angles\n"
+          "  pa       -> plot hourly altitude for a specific day\n"
+          "  change   -> change any of the options\n"
+          "  status   -> display current parameters\n"  
+          "  start    -> start the simulation\n"
+          "  q        -> quit the program\n")
 
-    # main loop does commands and do small sleeps
     while not stop_event.is_set():
-        # do any pending commands
         while not command_queue.empty():
             cmd, arg = command_queue.get()
-            handle_command(cmd, arg, moon_schedule, cycle_start_date, stop_event)
+            handle_command(cmd, arg, stop_event, state)
 
-        
         plt.pause(0.01)
-
-
         time.sleep(0.1)
 
-    # the user typed 'q' or simulation ended join the sim thread.
-    sim_thread.join()
-    print("[Main Thread] Simulation thread joined. Exiting.")
+    if state['simulation_thread'] is not None:
+        state['simulation_thread'].join()
+
+    print("[Main Thread] Exiting.")
 
 
 if __name__ == "__main__":
