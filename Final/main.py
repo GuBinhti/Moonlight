@@ -21,7 +21,7 @@ from rpi_hardware_pwm import HardwarePWM
 SUNSET_HOUR  = 18
 SUNRISE_HOUR = 6
 DEFAULT_LUNAR_CYCLE_LENGTH = 28
-
+SUN_COLOR = 'E56020'
 LUNAR_PHASES = [
     'Full Moon',
     'Waning Gibbous',
@@ -404,58 +404,92 @@ def user_input_thread(command_queue, state):
         if cmd == 'q':
             break
 
+def apply_brightness_to_hex(hex_color, brightness):
+
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+
+    r = int(r * brightness)
+    g = int(g * brightness)
+    b = int(b * brightness)
+
+    new_hex = f"{r:02X}{g:02X}{b:02X}"
+    return new_hex
 
 def simulation_loop(schedule, cycle_start_date, user_cycle_length,
                    update_interval_minutes, speed_factor,
-                   day_length_in_real_seconds,hex_color ,stop_event):
+                   day_length_in_real_seconds, hex_color, stop_event):
 
     real_secs_per_sim_minute = day_length_in_real_seconds / (24 * 60)
     simulation_time = cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
+
     disp = OLED_1in27_rgb.OLED_1in27_rgb()
     logging.info("\r1.27inch RGB OLED initializing...")
     disp.Init()
     disp.clear()
 
     print("\n[Simulation Thread] Started.")
-    while not stop_event.is_set():  # loop until told to stop
+    while not stop_event.is_set():
         if simulation_time >= cycle_end_time:
             print("[Simulation Thread] Reached end of the simulation.")
             break
 
-        current_entry = find_schedule_entry_for_time(schedule, cycle_start_date, simulation_time)
+        current_entry = find_schedule_entry_for_time(
+            schedule, cycle_start_date, simulation_time
+        )
+
         if current_entry is not None:
-            altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
+            altitude_deg = calculate_current_altitude(
+                current_entry, simulation_time, cycle_start_date
+            )
             phase_angle = current_entry.get('phase_angle', 0.0)
+
             print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                   f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
-                  f"- Altitude: {altitude_deg:.1f}°"
+                  f"- Altitude: {altitude_deg:.1f}° "
                   f"- Phase Angle: {phase_angle:.2f}")
+
             dc = set_servo_angle(altitude_deg)
             print(f"Servo DC: {dc:.2f}% ")
         else:
+            # No moon entry in schedule => check day/night
             if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
                 altitude_deg = 90
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       f"Sun is out (alt={altitude_deg}°).")
                 dc = set_servo_angle(altitude_deg)
                 print(f"Servo DC: {dc:.2f}% ")
+                phase_angle = 0  # no moon
             else:
                 altitude_deg = 0
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       "Moon not visible (alt=0).")
                 dc = set_servo_angle(altitude_deg)
                 print(f"Servo DC: {dc:.2f}% ")
+                phase_angle = 0  # no moon
 
-        # Sleep in real-world time
-        real_time_to_sleep = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
-        time.sleep(real_time_to_sleep)
-        # Advance the simulation time
-        simulation_time += datetime.timedelta(minutes=update_interval_minutes)
-        hex_color_h = '#' + hex_color
-        print(hex_color_h)
+        if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
+            base_hex_color = SUN_COLOR
+            brightness = 1.0
+        else:
+            base_hex_color = hex_color
+            brightness = phase_angle / 180.0
+
+        dimmed_hex = apply_brightness_to_hex(base_hex_color, brightness)
+        hex_color_h = '#' + dimmed_hex
+        #print(f"Screen color = {hex_color_h} (brightness={brightness:.2f})")
+
+        # Draw the color
+        from PIL import Image
         image = Image.new('RGB', (disp.width, disp.height), hex_color_h)
         disp.ShowImage(disp.getbuffer(image))
+
+        # Sleep and increment simulation time
+        real_time_to_sleep = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
+        time.sleep(real_time_to_sleep)
+        simulation_time += datetime.timedelta(minutes=update_interval_minutes)
 
     print("[Simulation Thread] Exiting...")
 
