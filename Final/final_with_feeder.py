@@ -11,12 +11,12 @@ import matplotlib.dates as mdates
 import os
 import sys
 #from waveshare_OLED import OLED_1in27_rgb
+#from rpi_hardware_pwm import HardwarePWM
+
 picdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'pic')
 libdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'lib')
 if os.path.exists(libdir):
     sys.path.append(libdir)
-#from rpi_hardware_pwm import HardwarePWM
-
 
 SUNSET_HOUR  = 18
 SUNRISE_HOUR = 6
@@ -98,9 +98,6 @@ def shake_feeder():
         move_feeder(120, 80, step=5, delay=100)
         move_feeder(80, 120, step=5, delay=100)
     reset_feeder()
-
-
-
     
 def get_num_phases(target_cycle_length):
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
@@ -419,7 +416,6 @@ def decimal_to_hex(decimal):
     hex_value = hex(decimal)[2:].upper()
     return hex_value.zfill(6)
 
-
 def user_input_thread(command_queue, state):
     while True:
         valid_commands = ["pt", "pp", "pang", "pa", "start", "change", "status", "q", ""]
@@ -570,22 +566,23 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
             drop_feeder()
 
         # 2) during the feeding window
-#       – if reset is after drop (e.g. 08:00 → 12:00), window is [drop, reset)
-#       – if reset ≤ drop (e.g. 21:00 → 01:00), window is [drop…24:00) ∪ [00:00…reset)
+        # – if reset is after drop (e.g. 08:00 → 12:00), window is [drop, reset)
+        #– if reset ≤ drop (e.g. 21:00 → 01:00), window is [drop…24:00) ∪ [00:00…reset)
         if feed_reset > feed_drop:
             feeding = feed_drop <= simulation_time.time() < feed_reset
         else:
             feeding = (simulation_time.time() >= feed_drop) or (simulation_time.time() < feed_reset)
 
         if feeding:
-            print("Feeding!🥩🍽️")
+            print("Feeding! 🥩")
         
         if reset_minus_1min <= simulation_time.time() <= feed_reset:
             #print(reset_minus_1min)
-            print("Done Feeding🦴! Feeder Resetting...")
+            print("Done Feeding! 🦴 Feeder Resetting... 🫨")
 
     # 3) did we hit the exact reset moment?
         if simulation_time.time() == feed_reset:
+            
             shake_feeder()
             reset_feeder()
         
@@ -614,7 +611,6 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
         simulation_time += datetime.timedelta(minutes=update_interval_minutes)
 
     print("[Simulation Thread] Exiting...")
-
 
 def handle_command(cmd, arg, stop_event, state):
     if cmd == 'pt':
@@ -719,8 +715,9 @@ def main():
     speed_factor = 0.1
     day_length_in_real_seconds = 86400.0
     hex_color = 'FF0000'  # Default color (red)
-    feed_drop = datetime.time(SUNSET_HOUR, 30, 0)#place holder
-    feed_reset = datetime.time(SUNRISE_HOUR, 30, 0) # place holder
+    feed_drop = datetime.time(SUNSET_HOUR, 0, 0)#place holder
+    feed_reset = datetime.time((SUNSET_HOUR + 2), 0, 0) # place holder
+
     # Build initial schedule
     moon_schedule = calculate_moonrise_times(user_cycle_length)
     cycle_start_date = datetime.datetime.now()
