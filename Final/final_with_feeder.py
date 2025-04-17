@@ -67,6 +67,7 @@ DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
 
 #def set_feeder_angle(feeder_angle):
+    #pwm_channel = 1 = pin 13? double check in config.txt file
     #pwm = HardwarePWM(pwm_channel=1, hz=50)
     #pwm.start(0)
     #duty_cycle = 2.6 + 10.1 * (angle / 180.0)
@@ -538,7 +539,7 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
             print("Feeder dropped.")
             # drop_feeder()
 
-        # 3) during the feeding window
+        # 3) during the feeding windowss
         if drop_dt <= simulation_time < reset_dt:
             print("Feeding!.")
 
@@ -551,9 +552,8 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
         # 5) calculate the color
         '''
         # each tick in simulation_loop:
-        current_t = simulation_time.time()
-        today = simulation_time.date()
 
+        today = simulation_time.date()
         one_minute = datetime.timedelta(seconds=60)
 
         drop_minus_1min_dt = datetime.datetime.combine(today, feed_drop) - one_minute
@@ -563,29 +563,29 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
         reset_minus_1min = reset_minus_1min_dt.time()
 
         # 1) did we hit the exact drop moment?
-        if drop_minus_1min <= current_t <= feed_drop:
+        if drop_minus_1min <= simulation_time.time() <= feed_drop:
             print("Feeder dropping...")
 
-        if current_t == feed_drop:
+        if simulation_time.time() == feed_drop:
             drop_feeder()
 
         # 2) during the feeding window
 #       – if reset is after drop (e.g. 08:00 → 12:00), window is [drop, reset)
 #       – if reset ≤ drop (e.g. 21:00 → 01:00), window is [drop…24:00) ∪ [00:00…reset)
         if feed_reset > feed_drop:
-            feeding = feed_drop <= current_t < feed_reset
+            feeding = feed_drop <= simulation_time.time() < feed_reset
         else:
-            feeding = (current_t >= feed_drop) or (current_t < feed_reset)
+            feeding = (simulation_time.time() >= feed_drop) or (simulation_time.time() < feed_reset)
 
         if feeding:
-            print("Feeding!")
+            print("Feeding!🥩🍽️")
         
-        if reset_minus_1min <= current_t <= feed_reset:
+        if reset_minus_1min <= simulation_time.time() <= feed_reset:
             #print(reset_minus_1min)
-            print("Done Feeding! Feeder Resetting...")
+            print("Done Feeding🦴! Feeder Resetting...")
 
     # 3) did we hit the exact reset moment?
-        if current_t == feed_reset:
+        if simulation_time.time() == feed_reset:
             shake_feeder()
             reset_feeder()
         
