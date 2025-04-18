@@ -1,3 +1,9 @@
+import os
+import sys
+picdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'pic')
+libdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'lib')
+if os.path.exists(libdir):
+    sys.path.append(libdir)
 import time
 import math
 import datetime
@@ -8,15 +14,10 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import os
-import sys
-#from waveshare_OLED import OLED_1in27_rgb
-#from rpi_hardware_pwm import HardwarePWM
 
-picdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'pic')
-libdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'lib')
-if os.path.exists(libdir):
-    sys.path.append(libdir)
+from waveshare_OLED import OLED_1in27_rgb
+from PIL import Image, ImageDraw, ImageFont
+from rpi_hardware_pwm import HardwarePWM
 
 SUNSET_HOUR  = 18
 SUNRISE_HOUR = 6
@@ -58,21 +59,21 @@ MoonPhaseChecker = {
 
 DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
-#def set_servo_angle(angle):
-    #pwm = HardwarePWM(pwm_channel=0, hz=50)
-    #pwm.start(0)
-    #duty_cycle = 2.6 + 6.5 * (angle / 180.0)
-    #pwm.change_duty_cycle(duty_cycle)
-    #return duty_cycle
+def set_servo_angle(angle):
+    pwm = HardwarePWM(pwm_channel=0, hz=50)
+    pwm.start(0)
+    duty_cycle = 2.6 + 6.5 * (angle / 180.0)
+    pwm.change_duty_cycle(duty_cycle)
+    return duty_cycle
 
 
-#def set_feeder_angle(feeder_angle):
+def set_feeder_angle(feeder_angle):
     #pwm_channel = 1 = pin 13? double check in config.txt file
-    #pwm = HardwarePWM(pwm_channel=1, hz=50)
-    #pwm.start(0)
-    #duty_cycle = 2.6 + 10.1 * (angle / 180.0)
-    #pwm.change_duty_cycle(duty_cycle)
-    #return duty_cycle
+    pwm = HardwarePWM(pwm_channel=1, hz=50)
+    pwm.start(0)
+    duty_cycle = 2.6 + 10.1 * (feeder_angle / 180.0)
+    pwm.change_duty_cycle(duty_cycle)
+    return duty_cycle
 
 def move_feeder(start_angle, end_angle, delay, step=1):
     if start_angle < end_angle:
@@ -81,23 +82,33 @@ def move_feeder(start_angle, end_angle, delay, step=1):
         angle_range = range(int(start_angle), int(end_angle) - 1, -int(step))
     
     for angle in angle_range:
-        # set_feeder_angle(angle)
-        print(f"Moving feeder to {angle}°")
-        time.sleep(delay)
+        set_feeder_angle(angle)
+        '''thread this sleep bc it stops the entire sim'''
+        time.sleep(delay) 
+        #print(f"Moving feeder to {angle}°")
+        #print(f"This is the delay: {delay}")
 
 def drop_feeder():
-    move_feeder(0, 120, step=1, delay=100)
+    move_feeder(0, 120, step=1, delay=0.05)
+
+#def async_drop():
+    #threading.Thread(target=drop_feeder, daemon=True).start
 
 def reset_feeder():
-    move_feeder(120, 0, step=1, delay=100)
+    move_feeder(120, 0, step=1, delay=0.05)
+
+#threading.Thread(target=reset_feeder, daemon=True).start
 
 def shake_feeder():
     #drop_feeder()
     # Shake the feeder by moving it back and forth
     for _ in range(SHAKE_NUM):
-        move_feeder(120, 80, step=5, delay=100)
-        move_feeder(80, 120, step=5, delay=100)
-    reset_feeder()
+        move_feeder(120, 80, step=5, delay=0.05)
+        move_feeder(80, 120, step=5, delay=0.05)
+    #reset_feeder()
+
+#def async_shake():
+    #threading.Thread(target=shake_feeder, daemon=True).start
     
 def get_num_phases(target_cycle_length):
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
@@ -474,10 +485,13 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
     simulation_time = cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
 
-    #disp = OLED_1in27_rgb.OLED_1in27_rgb()
+    last_drop_date = None
+    last_reset_date = None
+
+    disp = OLED_1in27_rgb.OLED_1in27_rgb()
     #logging.info("\r1.27inch RGB OLED initializing...")
-    #.Init()
-    #disp.clear()
+    disp.Init()
+    disp.clear()
 
     print("\n[Simulation Thread] Started.")
     while not stop_event.is_set():
@@ -499,24 +513,29 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
                   f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
                   f"- Altitude: {altitude_deg:.1f}° "
                   f"- Phase Angle: {phase_angle:.2f}")
+            #testing
+            print(f"Time is: {simulation_time.time()}")
 
-            #dc = set_servo_angle(altitude_deg)
-            #print(f"Servo DC: {dc:.2f}% ")
+            dc = set_servo_angle(altitude_deg)
+            print(f"Servo DC: {dc:.2f}% ")
         else:
             # No moon entry in schedule => check day/night
             if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
                 altitude_deg = 90
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       f"Sun is out (alt={altitude_deg}°).")
-                #dc = set_servo_angle(altitude_deg)
-                #print(f"Servo DC: {dc:.2f}% ")
+                #testing
+                print(f"Time is: {simulation_time.time()}")
+
+                dc = set_servo_angle(altitude_deg)
+                print(f"Servo DC: {dc:.2f}% ")
                 phase_angle = 0  # no moon
             else:
                 altitude_deg = 0
                 print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
                       "Moon not visible (alt=0).")
-                #dc = set_servo_angle(altitude_deg)
-                #print(f"Servo DC: {dc:.2f}% ")
+                dc = set_servo_angle(altitude_deg)
+                print(f"Servo DC: {dc:.2f}% ")
                 phase_angle = 0  # no moon
 
         
@@ -547,10 +566,11 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
             print("Feeder Reset!")
         # 5) calculate the color
         '''
-        # each tick in simulation_loop:
 
         today = simulation_time.date()
+
         one_minute = datetime.timedelta(seconds=60)
+
 
         drop_minus_1min_dt = datetime.datetime.combine(today, feed_drop) - one_minute
         drop_minus_1min = drop_minus_1min_dt.time()
@@ -561,10 +581,13 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
         # 1) did we hit the exact drop moment?
         if drop_minus_1min <= simulation_time.time() <= feed_drop:
             print("Feeder dropping...")
+            #drop_feeder()
 
-        if simulation_time.time() == feed_drop:
+        if ((simulation_time.hour, simulation_time.minute) == (feed_drop.hour, feed_drop.minute)) and (last_drop_date != today):
+            print("feeder going down")
             drop_feeder()
-
+            #async_drop()
+            last_drop_date = today
         # 2) during the feeding window
         # – if reset is after drop (e.g. 08:00 → 12:00), window is [drop, reset)
         #– if reset ≤ drop (e.g. 21:00 → 01:00), window is [drop…24:00) ∪ [00:00…reset)
@@ -580,11 +603,15 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
             #print(reset_minus_1min)
             print("Done Feeding! 🦴 Feeder Resetting... 🫨")
 
+
     # 3) did we hit the exact reset moment?
-        if simulation_time.time() == feed_reset:
-            
+        if ((simulation_time.hour, simulation_time.minute) == (feed_reset.hour, feed_reset.minute)) and (last_reset_date != today):
+            print("done")
             shake_feeder()
             reset_feeder()
+            #async_shake()
+            #async_reset()
+            last_reset_date = today
         
 
 
@@ -598,12 +625,12 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length,
 
         dimmed_hex = apply_brightness_to_hex(base_hex_color, brightness)
         hex_color_h = '#' + dimmed_hex
-        #print(f"Screen color = {hex_color_h} (brightness={brightness:.2f})")
+        print(f"Screen color = {hex_color_h} (brightness={brightness:.2f})")
 
         # Draw the color
         from PIL import Image
-        #image = Image.new('RGB', (disp.width, disp.height), hex_color_h)
-        #disp.ShowImage(disp.getbuffer(image))
+        image = Image.new('RGB', (disp.width, disp.height), hex_color_h)
+        disp.ShowImage(disp.getbuffer(image))
 
         # Sleep and increment simulation time
         real_time_to_sleep = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
@@ -712,11 +739,11 @@ def handle_command(cmd, arg, stop_event, state):
 
 def main():
     user_cycle_length = DEFAULT_LUNAR_CYCLE_LENGTH
-    speed_factor = 0.1
+    speed_factor = 1
     day_length_in_real_seconds = 86400.0
     hex_color = 'FF0000'  # Default color (red)
-    feed_drop = datetime.time(SUNSET_HOUR, 0, 0)#place holder
-    feed_reset = datetime.time((SUNSET_HOUR + 2), 0, 0) # place holder
+    feed_drop = datetime.time(SUNSET_HOUR, 0)#place holder
+    feed_reset = datetime.time((SUNSET_HOUR + 2), 0) # place holder
 
     # Build initial schedule
     moon_schedule = calculate_moonrise_times(user_cycle_length)
