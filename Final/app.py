@@ -22,7 +22,7 @@ state = {
     'feed_end_time': None,
     'simulation_started': False,
     'simulation_thread': None,
-    'stop_event': None,  # <---- Here
+    'stop_event': None,  # NEW: Stop event saved inside state
 }
 
 @app.route('/')
@@ -32,14 +32,17 @@ def home():
 @app.route('/start-simulation')
 def start_simulation():
     if not state['simulation_started']:
-        state['simulation_started'] = True
+        print("Starting simulation...")
+
+        # Calculate feed end time
         state['cycle_start_date'] = datetime.datetime.now()
         state['feed_end_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
-        
-        # Fresh stop_event every time we start
+
+        # CREATE a NEW stop_event
         stop_event = threading.Event()
         state['stop_event'] = stop_event
 
+        # Launch simulation thread
         sim_thread = threading.Thread(
             target=simulation_loop,
             args=(
@@ -57,6 +60,8 @@ def start_simulation():
         )
         sim_thread.start()
         state['simulation_thread'] = sim_thread
+        state['simulation_started'] = True
+
         return jsonify({'message': 'Simulation started!'})
     else:
         return jsonify({'message': 'Simulation already running.'})
@@ -65,6 +70,7 @@ def start_simulation():
 def end_simulation():
     if state['simulation_started']:
         if state['stop_event'] is not None:
+            print("Stopping simulation...")
             state['stop_event'].set()
         state['simulation_started'] = False
         return jsonify({'message': 'Simulation ending...'})
@@ -120,7 +126,6 @@ def change_settings():
     day_length = data.get('day_length')
     hex_color = data.get('hex_color')
 
-    # Update settings if provided
     if cycle_length:
         state['user_cycle_length'] = cycle_length
     if speed_factor:
@@ -130,7 +135,7 @@ def change_settings():
     if hex_color:
         state['hex_color'] = hex_color
 
-    # Recalculate moon schedule with new settings
+    # Update moon schedule
     state['moon_schedule'] = calculate_moonrise_times(state['user_cycle_length'])
     state['cycle_start_date'] = datetime.datetime.now()
     state['feed_end_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
