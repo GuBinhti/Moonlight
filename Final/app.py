@@ -3,6 +3,7 @@ import threading
 import os
 import datetime
 
+# Import your full simulator code
 from simulator import calculate_moonrise_times, plot_moon_schedule_times, plot_moon_schedule_phases
 from simulator import plot_moon_phase_angle, plot_hourly_altitude, simulation_loop
 
@@ -21,9 +22,8 @@ state = {
     'feed_end_time': None,
     'simulation_started': False,
     'simulation_thread': None,
+    'stop_event': None,  # <---- Here
 }
-
-stop_event = threading.Event()
 
 @app.route('/')
 def home():
@@ -33,8 +33,13 @@ def home():
 def start_simulation():
     if not state['simulation_started']:
         state['simulation_started'] = True
+        state['cycle_start_date'] = datetime.datetime.now()
         state['feed_end_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
-        stop_event.clear()
+        
+        # Fresh stop_event every time we start
+        stop_event = threading.Event()
+        state['stop_event'] = stop_event
+
         sim_thread = threading.Thread(
             target=simulation_loop,
             args=(
@@ -59,7 +64,8 @@ def start_simulation():
 @app.route('/end-simulation')
 def end_simulation():
     if state['simulation_started']:
-        stop_event.set()
+        if state['stop_event'] is not None:
+            state['stop_event'].set()
         state['simulation_started'] = False
         return jsonify({'message': 'Simulation ending...'})
     else:
