@@ -19,10 +19,12 @@ state = {
     'speed_factor': 1.0,
     'day_length_in_real_seconds': 86400,
     'hex_color': 'FF0000',
-    'feed_end_time': None,
+    'feed_start_time': '19:00',
+    'feed_end_time': '04:00',
+    'feed_end_real_time': None,  # backup
     'simulation_started': False,
     'simulation_thread': None,
-    'stop_event': None,  # NEW: Stop event saved inside state
+    'stop_event': None,
 }
 
 @app.route('/')
@@ -32,17 +34,14 @@ def home():
 @app.route('/start-simulation')
 def start_simulation():
     if not state['simulation_started']:
-        print("Starting simulation...")
+        print("[Server] Starting simulation...")
 
-        # Calculate feed end time
         state['cycle_start_date'] = datetime.datetime.now()
-        state['feed_end_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
+        state['feed_end_real_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
 
-        # CREATE a NEW stop_event
         stop_event = threading.Event()
         state['stop_event'] = stop_event
 
-        # Launch simulation thread
         sim_thread = threading.Thread(
             target=simulation_loop,
             args=(
@@ -53,12 +52,14 @@ def start_simulation():
                 state['speed_factor'],
                 state['day_length_in_real_seconds'],
                 state['hex_color'],
+                state['feed_start_time'],
                 state['feed_end_time'],
                 stop_event
             ),
             daemon=True
         )
         sim_thread.start()
+
         state['simulation_thread'] = sim_thread
         state['simulation_started'] = True
 
@@ -70,7 +71,7 @@ def start_simulation():
 def end_simulation():
     if state['simulation_started']:
         if state['stop_event'] is not None:
-            print("Stopping simulation...")
+            print("[Server] Stopping simulation...")
             state['stop_event'].set()
         state['simulation_started'] = False
         return jsonify({'message': 'Simulation ending...'})
@@ -125,6 +126,8 @@ def change_settings():
     speed_factor = data.get('speed_factor')
     day_length = data.get('day_length')
     hex_color = data.get('hex_color')
+    feed_start = data.get('feed_start_time')
+    feed_end = data.get('feed_end_time')
 
     if cycle_length:
         state['user_cycle_length'] = cycle_length
@@ -134,11 +137,15 @@ def change_settings():
         state['day_length_in_real_seconds'] = day_length
     if hex_color:
         state['hex_color'] = hex_color
+    if feed_start:
+        state['feed_start_time'] = feed_start
+    if feed_end:
+        state['feed_end_time'] = feed_end
 
     # Update moon schedule
     state['moon_schedule'] = calculate_moonrise_times(state['user_cycle_length'])
     state['cycle_start_date'] = datetime.datetime.now()
-    state['feed_end_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
+    state['feed_end_real_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
 
     return jsonify({'message': 'Settings updated successfully!'})
 
@@ -149,6 +156,8 @@ def status():
         'Speed Factor': state['speed_factor'],
         'Day Length (s)': state['day_length_in_real_seconds'],
         'Hex Color': state['hex_color'],
+        'Feed Start Time': state['feed_start_time'],
+        'Feed End Time': state['feed_end_time'],
         'Simulation Started': state['simulation_started'],
     })
 
