@@ -3,10 +3,11 @@ import threading
 import os
 import datetime
 
-# Import your full simulator code
+# Import your simulator logic
 from simulator import (
-    calculate_moonrise_times, plot_moon_schedule_times, plot_moon_schedule_phases,
-    plot_moon_phase_angle, plot_hourly_altitude, simulation_loop
+    calculate_moonrise_times, plot_moon_schedule_times,
+    plot_moon_schedule_phases, plot_moon_phase_angle,
+    plot_hourly_altitude, simulation_loop
 )
 
 app = Flask(__name__)
