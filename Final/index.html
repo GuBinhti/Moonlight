@@ -77,10 +77,21 @@
     }
 
     async function plotAltitude() {
-      const day = document.getElementById('dayInput').value;
-      const res = await axios.post('/plot-altitude', { day: parseInt(day) });
-      if (res.data.image) {
-        document.getElementById('plotImage').src = res.data.image;
+      const day = parseInt(document.getElementById('dayInput').value);
+      if (isNaN(day)) {
+        alert('Please enter a valid day');
+        return;
+      }
+
+      const res = await fetch('/plot-altitude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: day })
+      });
+
+      const data = await res.json();
+      if (data.image) {
+        document.getElementById('plotImage').src = data.image;
       } else {
         alert('Invalid day index');
       }
