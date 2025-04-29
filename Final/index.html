@@ -39,25 +39,26 @@
     <input type="number" id="cycleInput" placeholder="New Cycle Length">
     <input type="number" id="speedInput" placeholder="Speed Factor">
     <input type="number" id="dayLengthInput" placeholder="Day Length (sec)">
-    <input type="text" id="hexInput" placeholder="Hex Color (ex: FF0000)">
+    <input type="text" id="hexInput" placeholder="Hex Color (e.g., FF0000)">
+    <input type="text" id="feedStartInput" placeholder="Feed Start (e.g., 19:00)">
+    <input type="text" id="feedEndInput" placeholder="Feed End (e.g., 04:00)">
     <button onclick="changeSettings()">Apply Changes</button>
   </div>
 
   <div id="status"></div>
-
   <img id="plotImage" src="" alt="Plot will appear here">
 
   <script>
     async function startSimulation() {
       const res = await axios.get('/start-simulation');
       alert(res.data.message);
-      updateSimStatus();  // Refresh badge
+      updateSimStatus();
     }
 
     async function endSimulation() {
       const res = await axios.get('/end-simulation');
       alert(res.data.message);
-      updateSimStatus();  // Refresh badge
+      updateSimStatus();
     }
 
     async function plotPhaseAngle() {
@@ -99,39 +100,38 @@
       const speed = parseFloat(document.getElementById('speedInput').value);
       const dayLength = parseFloat(document.getElementById('dayLengthInput').value);
       const hex = document.getElementById('hexInput').value;
+      const feedStart = document.getElementById('feedStartInput').value;
+      const feedEnd = document.getElementById('feedEndInput').value;
 
       const res = await axios.post('/change-settings', {
         cycle_length: cycle || null,
         speed_factor: speed || null,
         day_length: dayLength || null,
-        hex_color: hex || null
+        hex_color: hex || null,
+        feed_start_time: feedStart || null,
+        feed_end_time: feedEnd || null
       });
 
       alert(res.data.message);
+      updateSimStatus();
     }
 
     async function updateSimStatus() {
-      try {
-        const res = await axios.get('/status');
-        const running = res.data['Simulation Started'];
-        const badge = document.getElementById('simStateBadge');
-        if (running) {
-          badge.innerText = 'Running';
-          badge.classList.remove('stopped');
-          badge.classList.add('running');
-        } else {
-          badge.innerText = 'Stopped';
-          badge.classList.remove('running');
-          badge.classList.add('stopped');
-        }
-      } catch (err) {
-        console.error('Failed to fetch sim status:', err);
+      const res = await axios.get('/status');
+      const badge = document.getElementById('simStateBadge');
+      if (res.data['Simulation Started']) {
+        badge.innerText = 'Running';
+        badge.classList.remove('stopped');
+        badge.classList.add('running');
+      } else {
+        badge.innerText = 'Stopped';
+        badge.classList.remove('running');
+        badge.classList.add('stopped');
       }
     }
 
-    // Refresh simulation status every 3 seconds
     setInterval(updateSimStatus, 3000);
-    updateSimStatus();  // Initial call
+    updateSimStatus();
   </script>
 </body>
 </html>
