@@ -4,14 +4,16 @@ import os
 import datetime
 
 # Import your full simulator code
-from simulator import calculate_moonrise_times, plot_moon_schedule_times, plot_moon_schedule_phases
-from simulator import plot_moon_phase_angle, plot_hourly_altitude, simulation_loop
+from simulator import (
+    calculate_moonrise_times, plot_moon_schedule_times, plot_moon_schedule_phases,
+    plot_moon_phase_angle, plot_hourly_altitude, simulation_loop
+)
 
 app = Flask(__name__)
 OUTPUT_DIR = 'static/plots'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# State to track simulation parameters
+# State
 state = {
     'moon_schedule': calculate_moonrise_times(28),
     'cycle_start_date': datetime.datetime.now(),
@@ -21,7 +23,6 @@ state = {
     'hex_color': 'FF0000',
     'feed_start_time': '19:00',
     'feed_end_time': '04:00',
-    'feed_end_real_time': None,  # backup
     'simulation_started': False,
     'simulation_thread': None,
     'stop_event': None,
@@ -31,13 +32,16 @@ state = {
 def home():
     return send_from_directory('static', 'index.html')
 
+@app.route('/plots/<path:filename>')
+def serve_plot(filename):
+    return send_from_directory('static/plots', filename)
+
 @app.route('/start-simulation')
 def start_simulation():
     if not state['simulation_started']:
         print("[Server] Starting simulation...")
 
         state['cycle_start_date'] = datetime.datetime.now()
-        state['feed_end_real_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
 
         stop_event = threading.Event()
         state['stop_event'] = stop_event
@@ -48,7 +52,7 @@ def start_simulation():
                 state['moon_schedule'],
                 state['cycle_start_date'],
                 state['user_cycle_length'],
-                1,  # update_interval_minutes
+                1,
                 state['speed_factor'],
                 state['day_length_in_real_seconds'],
                 state['hex_color'],
@@ -62,10 +66,8 @@ def start_simulation():
 
         state['simulation_thread'] = sim_thread
         state['simulation_started'] = True
-
         return jsonify({'message': 'Simulation started!'})
-    else:
-        return jsonify({'message': 'Simulation already running.'})
+    return jsonify({'message': 'Simulation already running.'})
 
 @app.route('/end-simulation')
 def end_simulation():
@@ -75,8 +77,7 @@ def end_simulation():
             state['stop_event'].set()
         state['simulation_started'] = False
         return jsonify({'message': 'Simulation ending...'})
-    else:
-        return jsonify({'message': 'Simulation was not running.'})
+    return jsonify({'message': 'Simulation was not running.'})
 
 @app.route('/plot-phase-angle')
 def plot_phase_angle():
@@ -108,7 +109,11 @@ def plot_phases():
 @app.route('/plot-altitude', methods=['POST'])
 def plot_altitude():
     data = request.get_json()
-    day_idx = data.get('day', 0)
+    try:
+        day_idx = int(data.get('day', 0))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid day index'}), 400
+
     if 0 <= day_idx < len(state['moon_schedule']):
         plot_hourly_altitude(state['moon_schedule'][day_idx], state['cycle_start_date'], marker_interval=30)
         filepath = os.path.join(OUTPUT_DIR, f'altitude_day{day_idx}.png')
@@ -122,30 +127,15 @@ def plot_altitude():
 @app.route('/change-settings', methods=['POST'])
 def change_settings():
     data = request.get_json()
-    cycle_length = data.get('cycle_length')
-    speed_factor = data.get('speed_factor')
-    day_length = data.get('day_length')
-    hex_color = data.get('hex_color')
-    feed_start = data.get('feed_start_time')
-    feed_end = data.get('feed_end_time')
+    state['user_cycle_length'] = data.get('cycle_length') or state['user_cycle_length']
+    state['speed_factor'] = data.get('speed_factor') or state['speed_factor']
+    state['day_length_in_real_seconds'] = data.get('day_length') or state['day_length_in_real_seconds']
+    state['hex_color'] = data.get('hex_color') or state['hex_color']
+    state['feed_start_time'] = data.get('feed_start_time') or state['feed_start_time']
+    state['feed_end_time'] = data.get('feed_end_time') or state['feed_end_time']
 
-    if cycle_length:
-        state['user_cycle_length'] = cycle_length
-    if speed_factor:
-        state['speed_factor'] = speed_factor
-    if day_length:
-        state['day_length_in_real_seconds'] = day_length
-    if hex_color:
-        state['hex_color'] = hex_color
-    if feed_start:
-        state['feed_start_time'] = feed_start
-    if feed_end:
-        state['feed_end_time'] = feed_end
-
-    # Update moon schedule
     state['moon_schedule'] = calculate_moonrise_times(state['user_cycle_length'])
     state['cycle_start_date'] = datetime.datetime.now()
-    state['feed_end_real_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
 
     return jsonify({'message': 'Settings updated successfully!'})
 
