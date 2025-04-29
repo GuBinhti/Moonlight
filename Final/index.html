@@ -5,15 +5,24 @@
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    button { margin: 5px; padding: 10px 15px; }
+    button, input { margin: 5px; padding: 10px; }
     img { margin-top: 20px; max-width: 90%; height: auto; }
-    #status { margin-top: 15px; padding: 10px; background-color: #f0f0f0; }
+    #status, #simStatus { margin-top: 15px; padding: 10px; background-color: #f0f0f0; }
+    .settings { margin-top: 20px; }
+    .badge { padding: 8px 12px; color: white; border-radius: 5px; }
+    .running { background-color: green; }
+    .stopped { background-color: red; }
   </style>
 </head>
 <body>
   <h1>Moonlight Simulator</h1>
 
+  <div id="simStatus">
+    Simulation Status: <span id="simStateBadge" class="badge stopped">Stopped</span>
+  </div>
+
   <button onclick="startSimulation()">Start Simulation</button>
+  <button onclick="endSimulation()">End Simulation</button>
   <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
   <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
   <button onclick="plotPhases()">Plot Phases</button>
@@ -23,7 +32,16 @@
     <button onclick="plotAltitude()">Plot Altitude</button>
   </div>
 
-  <button onclick="getStatus()">Show Status</button>
+  <button onclick="getStatus()">Show Full Status</button>
+
+  <div class="settings">
+    <h3>Change Settings</h3>
+    <input type="number" id="cycleInput" placeholder="New Cycle Length">
+    <input type="number" id="speedInput" placeholder="Speed Factor">
+    <input type="number" id="dayLengthInput" placeholder="Day Length (sec)">
+    <input type="text" id="hexInput" placeholder="Hex Color (ex: FF0000)">
+    <button onclick="changeSettings()">Apply Changes</button>
+  </div>
 
   <div id="status"></div>
 
@@ -33,6 +51,13 @@
     async function startSimulation() {
       const res = await axios.get('/start-simulation');
       alert(res.data.message);
+      updateSimStatus();  // Refresh badge
+    }
+
+    async function endSimulation() {
+      const res = await axios.get('/end-simulation');
+      alert(res.data.message);
+      updateSimStatus();  // Refresh badge
     }
 
     async function plotPhaseAngle() {
@@ -68,6 +93,45 @@
       }
       document.getElementById('status').innerHTML = text;
     }
+
+    async function changeSettings() {
+      const cycle = parseInt(document.getElementById('cycleInput').value);
+      const speed = parseFloat(document.getElementById('speedInput').value);
+      const dayLength = parseFloat(document.getElementById('dayLengthInput').value);
+      const hex = document.getElementById('hexInput').value;
+
+      const res = await axios.post('/change-settings', {
+        cycle_length: cycle || null,
+        speed_factor: speed || null,
+        day_length: dayLength || null,
+        hex_color: hex || null
+      });
+
+      alert(res.data.message);
+    }
+
+    async function updateSimStatus() {
+      try {
+        const res = await axios.get('/status');
+        const running = res.data['Simulation Started'];
+        const badge = document.getElementById('simStateBadge');
+        if (running) {
+          badge.innerText = 'Running';
+          badge.classList.remove('stopped');
+          badge.classList.add('running');
+        } else {
+          badge.innerText = 'Stopped';
+          badge.classList.remove('running');
+          badge.classList.add('stopped');
+        }
+      } catch (err) {
+        console.error('Failed to fetch sim status:', err);
+      }
+    }
+
+    // Refresh simulation status every 3 seconds
+    setInterval(updateSimStatus, 3000);
+    updateSimStatus();  // Initial call
   </script>
 </body>
 </html>
