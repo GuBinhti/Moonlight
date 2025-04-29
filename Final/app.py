@@ -3,15 +3,14 @@ import threading
 import os
 import datetime
 
-# Import your full moonlight simulator here
 from simulator import calculate_moonrise_times, plot_moon_schedule_times, plot_moon_schedule_phases
-from simulator import plot_moon_phase_angle, plot_hourly_altitude, simulation_loop, handle_command
+from simulator import plot_moon_phase_angle, plot_hourly_altitude, simulation_loop
 
 app = Flask(__name__)
 OUTPUT_DIR = 'static/plots'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Global simulation state
+# State to track simulation parameters
 state = {
     'moon_schedule': calculate_moonrise_times(28),
     'cycle_start_date': datetime.datetime.now(),
@@ -19,6 +18,7 @@ state = {
     'speed_factor': 1.0,
     'day_length_in_real_seconds': 86400,
     'hex_color': 'FF0000',
+    'feed_end_time': None,
     'simulation_started': False,
     'simulation_thread': None,
 }
@@ -33,6 +33,8 @@ def home():
 def start_simulation():
     if not state['simulation_started']:
         state['simulation_started'] = True
+        state['feed_end_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
+        stop_event.clear()
         sim_thread = threading.Thread(
             target=simulation_loop,
             args=(
@@ -43,6 +45,7 @@ def start_simulation():
                 state['speed_factor'],
                 state['day_length_in_real_seconds'],
                 state['hex_color'],
+                state['feed_end_time'],
                 stop_event
             ),
             daemon=True
@@ -53,11 +56,19 @@ def start_simulation():
     else:
         return jsonify({'message': 'Simulation already running.'})
 
+@app.route('/end-simulation')
+def end_simulation():
+    if state['simulation_started']:
+        stop_event.set()
+        state['simulation_started'] = False
+        return jsonify({'message': 'Simulation ending...'})
+    else:
+        return jsonify({'message': 'Simulation was not running.'})
+
 @app.route('/plot-phase-angle')
 def plot_phase_angle():
     plot_moon_phase_angle(state['moon_schedule'])
     filepath = os.path.join(OUTPUT_DIR, 'phase_angle.png')
-    # Save plot
     import matplotlib.pyplot as plt
     plt.savefig(filepath)
     plt.close()
@@ -95,9 +106,30 @@ def plot_altitude():
     else:
         return jsonify({'error': 'Invalid day index'}), 400
 
-@app.route('/plots/<filename>')
-def serve_plot(filename):
-    return send_from_directory(OUTPUT_DIR, filename)
+@app.route('/change-settings', methods=['POST'])
+def change_settings():
+    data = request.get_json()
+    cycle_length = data.get('cycle_length')
+    speed_factor = data.get('speed_factor')
+    day_length = data.get('day_length')
+    hex_color = data.get('hex_color')
+
+    # Update settings if provided
+    if cycle_length:
+        state['user_cycle_length'] = cycle_length
+    if speed_factor:
+        state['speed_factor'] = speed_factor
+    if day_length:
+        state['day_length_in_real_seconds'] = day_length
+    if hex_color:
+        state['hex_color'] = hex_color
+
+    # Recalculate moon schedule with new settings
+    state['moon_schedule'] = calculate_moonrise_times(state['user_cycle_length'])
+    state['cycle_start_date'] = datetime.datetime.now()
+    state['feed_end_time'] = state['cycle_start_date'] + datetime.timedelta(days=state['user_cycle_length'])
+
+    return jsonify({'message': 'Settings updated successfully!'})
 
 @app.route('/status')
 def status():
