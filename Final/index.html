@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Moonlight Simulator Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    button { margin: 5px; padding: 10px 15px; }
+    img { margin-top: 20px; max-width: 90%; height: auto; }
+    #status { margin-top: 15px; padding: 10px; background-color: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Moonlight Simulator</h1>
+
+  <button onclick="startSimulation()">Start Simulation</button>
+  <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
+  <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
+  <button onclick="plotPhases()">Plot Phases</button>
+
+  <div>
+    <input type="number" id="dayInput" placeholder="Enter Day Index">
+    <button onclick="plotAltitude()">Plot Altitude</button>
+  </div>
+
+  <button onclick="getStatus()">Show Status</button>
+
+  <div id="status"></div>
+
+  <img id="plotImage" src="" alt="Plot will appear here">
+
+  <script>
+    async function startSimulation() {
+      const res = await axios.get('/start-simulation');
+      alert(res.data.message);
+    }
+
+    async function plotPhaseAngle() {
+      const res = await axios.get('/plot-phase-angle');
+      document.getElementById('plotImage').src = res.data.image;
+    }
+
+    async function plotRiseSet() {
+      const res = await axios.get('/plot-rise-set');
+      document.getElementById('plotImage').src = res.data.image;
+    }
+
+    async function plotPhases() {
+      const res = await axios.get('/plot-phases');
+      document.getElementById('plotImage').src = res.data.image;
+    }
+
+    async function plotAltitude() {
+      const day = document.getElementById('dayInput').value;
+      const res = await axios.post('/plot-altitude', { day: parseInt(day) });
+      if (res.data.image) {
+        document.getElementById('plotImage').src = res.data.image;
+      } else {
+        alert('Invalid day index');
+      }
+    }
+
+    async function getStatus() {
+      const res = await axios.get('/status');
+      let text = '';
+      for (const key in res.data) {
+        text += `<b>${key}</b>: ${res.data[key]}<br>`;
+      }
+      document.getElementById('status').innerHTML = text;
+    }
+  </script>
+</body>
+</html>
