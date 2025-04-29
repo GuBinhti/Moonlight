@@ -11,7 +11,7 @@ import threading
 from queue import Queue
 import numpy as np
 import matplotlib
-matplotlib.use("TkAgg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from waveshare_OLED import OLED_1in27_rgb
