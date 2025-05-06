@@ -462,22 +462,40 @@ def user_input_thread(command_queue, state):
         if cmd == 'q':
             break
 
-def simulation_loop(schedule, cycle_start_date, user_cycle_length, update_interval_minutes, speed_factor,
-        day_length_in_real_seconds, hex_color, feed_start_time, feed_end_time, stop_event):
+def simulation_loop(
+        schedule,
+        cycle_start_date,
+        user_cycle_length,
+        update_interval_minutes,
+        speed_factor,
+        day_length_in_real_seconds,
+        hex_color,
+        feed_start_time,
+        feed_end_time,
+        stop_event,
+        shared_state=None          # ← pass in the global “state” dict from app.py
+):
+    """
+    Advance simulated time, move the servos / feeder, and (optionally)
+    push live‑status metrics into a shared dictionary so the Flask
+    dashboard can display them in real‑time.
+    """
 
     real_secs_per_sim_minute = day_length_in_real_seconds / (24 * 60)
-    simulation_time          = cycle_start_date
-    cycle_end_time           = cycle_start_date + datetime.timedelta(
-                                    days=user_cycle_length)
 
+    simulation_time = cycle_start_date
+    cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
+
+    
     disp = OLED_1in27_rgb.OLED_1in27_rgb()
     disp.Init()
     disp.clear()
 
     night_frame_drawn = False
-    day_frame_drawn = False
+    day_frame_drawn   = False
 
     print("\n[Simulation Thread] Started.")
+
     while not stop_event.is_set():
 
         if simulation_time >= cycle_end_time:
@@ -493,66 +511,68 @@ def simulation_loop(schedule, cycle_start_date, user_cycle_length, update_interv
             altitude_deg = calculate_current_altitude(
                 current_entry, simulation_time, cycle_start_date
             )
-            phase_angle = current_entry.get('phase_angle', 0.0)
+            phase_angle  = current_entry.get('phase_angle', 0.0)
 
-            print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
-                  f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
-                  f"- Altitude: {altitude_deg:.1f}° "
-                  f"- Phase Angle: {phase_angle:.2f}")
-            dc = set_servo_angle(altitude_deg)
+            print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] "
+                  f"Day {current_entry['day']} | {current_entry['phase']} "
+                  f"| alt={altitude_deg:4.1f}° | angle={phase_angle:6.2f}")
 
         else:
             if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
-                altitude_deg = 90.0          # Sun at zenith for demo
+                altitude_deg = 90.0      # gimmick: sun at zenith
                 phase_angle  = 0.0
-                print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
-                      f"Sun is out (alt={altitude_deg}°).")
-                arm_thread = threading.Thread(target=move_arm, args=(180, 90))
-                arm_thread.start()
+                print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] Sun (alt={altitude_deg})")
+
+                threading.Thread(target=move_arm, args=(180, 90)).start()
             else:
                 altitude_deg = 0.0
                 phase_angle  = 0.0
-                print(f"[Sim {simulation_time.strftime('%Y-%m-%d %H:%M')}] "
-                      "Moon not visible (alt=0).")
+                print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] Moon not visible")
 
-        #dc = set_servo_angle(altitude_deg)
-        #print(f"Servo DC: {dc:.2f}% ")
+
+        set_servo_angle(altitude_deg)
+
         if simulation_time.strftime('%H:%M') == feed_start_time:
-            feeder_thread = threading.Thread(target=drop_feeder, args=(), daemon=True)
-            feeder_thread.start()
-
+            threading.Thread(target=drop_feeder,  daemon=True).start()
         if simulation_time.strftime('%H:%M') == feed_end_time:
-            shake_thread = threading.Thread(target=shake_feeder, args=(), daemon=True)
-            shake_thread.start()
+            threading.Thread(target=shake_feeder, daemon=True).start()
 
- 
         is_day   = SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR
         is_night = not is_day
 
-        # reset flag every morning for new frame
         if is_day and night_frame_drawn:
             night_frame_drawn = False
-            image = Image.new('RGB', (disp.width, disp.height), SUN_COLOR)
-            disp.ShowImage(disp.getbuffer(image))
-
-            day_frame_drawn = True
+            img = Image.new('RGB', (disp.width, disp.height), SUN_COLOR)
+            disp.ShowImage(disp.getbuffer(img))
 
         if is_night and not night_frame_drawn:
             base_hex_color = "#" + hex_color
-            brightness     = phase_angle / 180.0        # 0…1 scale
-
-
-            # Push a solid‑colour frame to the OLED
-            image = Image.new('RGB', (disp.width, disp.height), base_hex_color)
-            disp.ShowImage(disp.getbuffer(image))
-
+            img = Image.new('RGB', (disp.width, disp.height), base_hex_color)
+            disp.ShowImage(disp.getbuffer(img))
             night_frame_drawn = True
-            day_frame_drawn
 
-        real_time_to_sleep = (update_interval_minutes *
-                              real_secs_per_sim_minute) / speed_factor
-        time.sleep(real_time_to_sleep)
 
+        if shared_state is not None:
+            # sim clock
+            shared_state['sim_time'] = simulation_time
+
+            # % progress through the current cycle
+            elapsed   = simulation_time - cycle_start_date
+            total_sec = user_cycle_length * 24 * 3600
+            shared_state['progress'] = (elapsed.total_seconds() / total_sec) * 100.0
+
+            # what’s in the sky
+            if current_entry:
+                shared_state['current_phase']       = current_entry['phase']
+                shared_state['current_phase_angle'] = phase_angle
+            else:
+                shared_state['current_phase']       = 'Sun / No Moon'
+                shared_state['current_phase_angle'] = phase_angle
+
+            shared_state['current_altitude'] = altitude_deg
+
+        sleep_real = (update_interval_minutes * real_secs_per_sim_minute) / speed_factor
+        time.sleep(sleep_real)
         simulation_time += datetime.timedelta(minutes=update_interval_minutes)
 
     print("[Simulation Thread] Exiting…")
