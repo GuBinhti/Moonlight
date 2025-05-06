@@ -18,6 +18,7 @@ from waveshare_OLED import OLED_1in27_rgb
 from PIL import Image, ImageDraw, ImageFont
 from rpi_hardware_pwm import HardwarePWM
 
+current_servo_angle = 0.0
 
 SUNSET_HOUR  = 14
 SUNRISE_HOUR = 6
@@ -59,24 +60,46 @@ MoonPhaseChecker = {
 DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
 def set_servo_angle(angle):
+    global current_servo_angle
     pwm = HardwarePWM(pwm_channel=0, hz=50)
-    pwm.start(0)
+    #pwm.start(0)
     duty_cycle = 2.6 + 6.5 * (angle / 180.0)
     pwm.change_duty_cycle(duty_cycle)
+    current_servo_angle = angle
+
     return duty_cycle
 
 def move_arm(start_angle, end_angle, delay= 0.05, step=1):
+    #start_angle = 180
+    #end_angle = 90
     if start_angle < end_angle:
         angle_range = range(int(start_angle), int(end_angle) + 1, int(step))
     else:
         angle_range = range(int(start_angle), int(end_angle) - 1, -int(step))
-    
     for angle in angle_range:
         set_servo_angle(angle)
         '''thread this sleep bc it stops the entire sim'''
         time.sleep(delay) 
-        #print(f"Moving feeder to {angle}°")
+        print(f"Moving arm to {angle}°")
         #print(f"This is the delay: {delay}")
+
+def move_arm_zero(start_angle, end_angle, delay, step):
+    #start_angle = 180
+    #end_angle = 90
+    if start_angle < end_angle:
+        angle_range = range(int(start_angle), int(end_angle) + 1, int(step))
+    else:
+        angle_range = range(int(start_angle), int(end_angle) - 1, int(-step))
+    for current_servo_angle in angle_range:
+        set_servo_angle(current_servo_angle)
+        if math.floor(compare_alt) == math.floor(current_servo_angle):
+            print(f"angles match: {compare_alt:.1f}"
+            f" and {current_servo_angle:.1f}")
+            return
+        else:
+            print(f"no match")
+            time.sleep(delay) 
+            print(f"Moving arm to this {current_servo_angle}°")
 
 def set_feeder_angle(feeder_angle):
     #pwm_channel = 1 = pin 13? double check in config.txt file
@@ -493,6 +516,20 @@ def simulation_loop(
 
     night_frame_drawn = False
     day_frame_drawn   = False
+    
+    sun_arm_moved = False
+    moon_reset_moved = False
+
+    servo_thread  = None
+    last_motion_type  = None 
+    
+    global compare_alt
+    compare_alt = None
+
+    sun_reset_moved = False
+    start_up_flag = False
+
+
 
     print("\n[Simulation Thread] Started.")
 
@@ -502,35 +539,115 @@ def simulation_loop(
             print("[Simulation Thread] Reached end of the simulation.")
             break
 
+        if servo_thread is not None and not servo_thread.is_alive():
+        # Only do this once per thread
+            ''' do this for all of the cases and save their last angle'''
+            if last_motion_type == 'zero':
+                # We just finished a zero‐reset; what's the simulation's moon altitude now?
+                entry = find_schedule_entry_for_time(
+                    schedule, cycle_start_date, simulation_time
+                )
+                if entry: 
+                    last_alt = calculate_current_altitude(entry, simulation_time, cycle_start_date)
+                    print(f"Last alt: {last_alt}:2f")
+            servo_thread   = None
+            last_motion_type = None
+
+        # check if thread is finsihed
+        can_move = (servo_thread is None) or (not servo_thread.is_alive())
+
 
         current_entry = find_schedule_entry_for_time(
             schedule, cycle_start_date, simulation_time
         )
+        is_day = SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR
 
-        if current_entry is not None:
-            altitude_deg = calculate_current_altitude(
-                current_entry, simulation_time, cycle_start_date
-            )
-            phase_angle  = current_entry.get('phase_angle', 0.0)
+        if is_day:
+            altitude_deg = 90.0
+            print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] Sun is out (alt={altitude_deg}°).")
 
+        elif current_entry is not None:
+            '''fix when the angle starts at 180 or 0 to be a smooth transition, prob need an if statment that checks when those entries happen'''
+            
+            altitude_deg = calculate_current_altitude(current_entry, simulation_time, cycle_start_date)
+            compare_alt = altitude_deg # compare this altitude
+            print(f"Comparison Alt: {compare_alt:.2f}")
+            phase_angle  = current_entry['phase_angle']
             print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] "
-                  f"Day {current_entry['day']} | {current_entry['phase']} "
-                  f"| alt={altitude_deg:4.1f}° | angle={phase_angle:6.2f}")
-
+                  f"Day {current_entry['day']} - Phase: {current_entry['phase']} "
+                  f"- Altitude: {altitude_deg:.1f}° - Phase Angle: {phase_angle:.2f}")
+            
         else:
-            if SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR:
-                altitude_deg = 90.0      # gimmick: sun at zenith
-                phase_angle  = 0.0
-                print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] Sun (alt={altitude_deg})")
-
-                threading.Thread(target=move_arm, args=(180, 90)).start()
-            else:
-                altitude_deg = 0.0
-                phase_angle  = 0.0
-                print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] Moon not visible")
+            compare_alt = 0
+            print(f"[Sim {simulation_time:%Y-%m-%d %H:%M}] Moon not visible (alt=0).")
 
 
-        set_servo_angle(altitude_deg)
+
+        if is_day:
+
+            sun_reset_moved = False
+            moon_reset_moved = False
+            #  move to 90
+            if not sun_arm_moved and can_move:
+                compare_alt = 90
+                print("GOING TO 90°")
+                servo_thread = threading.Thread(
+                    target=move_arm, args=(current_servo_angle, 90), daemon=True
+                )
+                servo_thread.start()
+                sun_arm_moved = True
+
+        
+
+
+        elif current_entry is not None:
+            # → Moon altitude
+            moon_reset_moved = False
+            sun_arm_moved = False
+            #print(f"{altitude_deg:.2f}")
+            target = altitude_deg
+            #if can_move and
+
+            if can_move:
+                print("Moving freely with Moon")
+                target = altitude_deg
+                if target != current_servo_angle:
+                    servo_thread = threading.Thread(target = move_arm_zero,
+                        args=(current_servo_angle, target, 0.06, 1), daemon=True
+                    )
+                    servo_thread.start()
+                else: 
+                    servo_thread = threading.Thread(
+                        target=lambda ang=target: set_servo_angle(ang),daemon=True
+                    )
+                    servo_thread.start()
+
+            elif can_move and not sun_reset_moved:
+                print("Exiting Sun Position")
+                if target != current_servo_angle and target > 90:
+                    servo_thread = threading.Thread(target=move_arm_zero, 
+                        args=(current_servo_angle, 180, 0.06, 1), daemon=True
+                    ) 
+                    servo_thread.start()
+                    sun_reset_moved = True
+                elif target != current_servo_angle and target < 90:
+                    servo_thread = threading.Thread(target=move_arm_zero, args=(current_servo_angle, 0, 0.06, 1), daemon=True) 
+                    servo_thread.start()
+                    sun_reset_moved = True
+                
+                
+        elif can_move and not moon_reset_moved:
+            sun_arm_moved = False                
+            print("Moon not Visible, ENTERING 0°")
+            servo_thread = threading.Thread(
+                    target=move_arm_zero, args=(current_servo_angle, 0, 0.05, 1), daemon=True
+                )
+                #''' not always 0 cases where the angle jumps from no moon to sun, so it needs to remember last angle'''#moon_reset_moved
+            last_motion_type = 'zero'
+            servo_thread.start()
+            moon_reset_moved = True        
+                
+                
 
         if simulation_time.strftime('%H:%M') == feed_start_time:
             threading.Thread(target=drop_feeder,  daemon=True).start()
