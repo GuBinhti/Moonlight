@@ -1,147 +1,179 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Moonlight Simulator Dashboard</title>
+  <meta charset="utf-8">
+  <title>Moonlight Simulator Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    button, input { margin: 5px; padding: 10px; }
-    img { margin-top: 20px; max-width: 90%; height: auto; }
-    #status, #simStatus { margin-top: 15px; padding: 10px; background-color: #f0f0f0; }
-    .settings { margin-top: 20px; }
-    .badge { padding: 8px 12px; color: white; border-radius: 5px; }
-    .running { background-color: green; }
-    .stopped { background-color: red; }
+    /* ───── layout ───── */
+    body{font-family:Arial,Helvetica,sans-serif;margin:20px;max-width:900px}
+    h1{margin-top:0}
+    button,input{margin:5px;padding:10px;font-size:14px}
+    img{margin-top:20px;max-width:100%;height:auto}
+    label{margin-right:5px}
+
+    /* ───── status badges ───── */
+    .badge{padding:6px 10px;border-radius:5px;color:#fff;font-weight:bold}
+    .running{background:#2e8b57}.stopped{background:#b22222}
+
+    /* live status block */
+    #liveStatus{margin-top:15px;padding:10px;background:#f0f0f0;border:1px solid #ccc}
+
+    /* settings panel */
+    #settingsPanel{
+      display:none;margin-top:20px;padding:15px;background:#fafafa;
+      border:1px solid #ccc;border-radius:4px
+    }
+    #settingsPanel input{width:135px}
   </style>
 </head>
 <body>
-  <h1>Moonlight Simulator</h1>
+  <h1>Moonlight Simulator</h1>
 
-  <div id="simStatus">
-    Simulation Status: <span id="simStateBadge" class="badge stopped">Stopped</span>
+  <!-- running indicator -->
+  <span id="simStateBadge" class="badge stopped">Stopped</span>
+
+  <!-- live status -->
+  <div id="liveStatus">
+    <b>Sim Time:</b> <span id="stTime">‑‑:‑‑:‑‑:‑‑</span><br>
+    <b>Progress:</b> <span id="stProg">0.00</span>%<br>
+    <b>Phase:</b> <span id="stPhase">N/A</span><br>
+    <b>Angle:</b> <span id="stAng">0.00</span>° | 
+    <b>Altitude:</b> <span id="stAlt">0.0</span>°
   </div>
 
-  <button onclick="startSimulation()">Start Simulation</button>
-  <button onclick="endSimulation()">End Simulation</button>
-  <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
-  <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
-  <button onclick="plotPhases()">Plot Phases</button>
+  <!-- quick actions -->
+  <button onclick="startSimulation()">Start Simulation</button>
+  <button onclick="endSimulation()">End Simulation</button>
+  <button onclick="toggleSettings()">Settings</button>
+  <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
+  <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
+  <button onclick="plotPhases()">Plot Phases</button>
 
+  <!-- altitude plot for selected day -->
   <div>
-    <input type="number" id="dayInput" placeholder="Enter Day Index">
-    <button onclick="plotAltitude()">Plot Altitude</button>
+    <input type="number" id="dayInput" placeholder="Day Index">
+    <button onclick="plotAltitude()">Plot Altitude</button>
   </div>
 
-  <button onclick="getStatus()">Show Full Status</button>
+  <!-- SETTINGS PANEL -->
+  <div id="settingsPanel">
+    <h3>Simulation Settings</h3>
 
-  <div class="settings">
-    <h3>Change Settings</h3>
-    <input type="number" id="cycleInput" placeholder="New Cycle Length">
-    <input type="number" id="speedInput" placeholder="Speed Factor">
-    <input type="number" id="dayLengthInput" placeholder="Day Length (sec)">
-    <input type="text" id="hexInput" placeholder="Hex Color (e.g., FF0000)">
-    <input type="text" id="feedStartInput" placeholder="Feed Start (e.g., 19:00)">
-    <input type="text" id="feedEndInput" placeholder="Feed End (e.g., 04:00)">
-    <button onclick="changeSettings()">Apply Changes</button>
+    <!-- cycle length -->
+    <label>Cycle Length (DD:HH:MM:SS)</label>
+    <input type="text" id="cycleInput" placeholder="28:00:00:00"><br>
+
+    <!-- feed times -->
+    <label>Feed Start (HH:MM)</label>
+    <input type="text" id="feedStartInput" placeholder="19:00">
+    <label>Feed End (HH:MM)</label>
+    <input type="text" id="feedEndInput" placeholder="04:00"><br>
+
+    <!-- moon colour -->
+    <label>Moon Colour Hex (RRGGBB)</label>
+    <input type="text" id="hexInput" placeholder="FF0000"><br><br>
+
+    <button onclick="applySettings()">Apply Settings</button>
+    <button onclick="startSimulation()">Start</button>
+    <button onclick="endSimulation()">End</button>
+    <button onclick="toggleSettings()">Close</button>
   </div>
 
-  <div id="status"></div>
+  <!-- plot image -->
   <img id="plotImage" src="" alt="Plot will appear here">
 
   <script>
-    async function startSimulation() {
-      const res = await axios.get('/start-simulation');
+    /* ───── helpers ───── */
+    function parseCycleLength(str){
+      const parts=str.split(':').map(Number);
+      if(parts.length!==4||parts.some(isNaN))return null;
+      const [dd,hh,mm,ss]=parts;
+      const days = dd + hh/24 + mm/1440 + ss/86400;
+      return Math.round(days);
+    }
+
+    /* ───── simulation control ───── */
+    async function startSimulation(){
+      const res=await axios.get('/start-simulation');
+      alert(res.data.message);
+      updateSimStatus();
+    }
+    async function endSimulation(){
+      const res=await axios.get('/end-simulation');
       alert(res.data.message);
       updateSimStatus();
     }
 
-    async function endSimulation() {
-      const res = await axios.get('/end-simulation');
-      alert(res.data.message);
-      updateSimStatus();
+    /* ───── plotting ───── */
+    async function plotPhaseAngle(){
+      const res=await axios.get('/plot-phase-angle');
+      document.getElementById('plotImage').src=res.data.image;
     }
-
-    async function plotPhaseAngle() {
-      const res = await axios.get('/plot-phase-angle');
-      document.getElementById('plotImage').src = res.data.image;
+    async function plotRiseSet(){
+      const res=await axios.get('/plot-rise-set');
+      document.getElementById('plotImage').src=res.data.image;
     }
-
-    async function plotRiseSet() {
-      const res = await axios.get('/plot-rise-set');
-      document.getElementById('plotImage').src = res.data.image;
+    async function plotPhases(){
+      const res=await axios.get('/plot-phases');
+      document.getElementById('plotImage').src=res.data.image;
     }
-
-    async function plotPhases() {
-      const res = await axios.get('/plot-phases');
-      document.getElementById('plotImage').src = res.data.image;
-    }
-
-    async function plotAltitude() {
-      const day = parseInt(document.getElementById('dayInput').value);
-      if (isNaN(day)) {
-        alert('Please enter a valid day');
-        return;
-      }
-
-      const res = await fetch('/plot-altitude', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ day: day })
+    async function plotAltitude(){
+      const day=parseInt(document.getElementById('dayInput').value);
+      if(isNaN(day)){alert('Enter a valid day index');return;}
+      const res=await fetch('/plot-altitude',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({day})
       });
-
-      const data = await res.json();
-      if (data.image) {
-        document.getElementById('plotImage').src = data.image;
-      } else {
-        alert('Invalid day index');
-      }
+      const data=await res.json();
+      if(data.image)document.getElementById('plotImage').src=data.image;
+      else alert(data.error||'Invalid day index');
     }
 
-    async function getStatus() {
-      const res = await axios.get('/status');
-      let text = '';
-      for (const key in res.data) {
-        text += `<b>${key}</b>: ${res.data[key]}<br>`;
-      }
-      document.getElementById('status').innerHTML = text;
+    /* ───── settings panel ───── */
+    function toggleSettings(){
+      const p=document.getElementById('settingsPanel');
+      p.style.display = p.style.display==='none'||!p.style.display? 'block':'none';
     }
+    async function applySettings(){
+      const cycleStr=document.getElementById('cycleInput').value.trim();
+      const cycleDays=cycleStr?parseCycleLength(cycleStr):null;
+      if(cycleStr&&cycleDays===null){alert('Invalid cycle length');return;}
 
-    async function changeSettings() {
-      const cycle = parseInt(document.getElementById('cycleInput').value);
-      const speed = parseFloat(document.getElementById('speedInput').value);
-      const dayLength = parseFloat(document.getElementById('dayLengthInput').value);
-      const hex = document.getElementById('hexInput').value;
-      const feedStart = document.getElementById('feedStartInput').value;
-      const feedEnd = document.getElementById('feedEndInput').value;
+      const hex=document.getElementById('hexInput').value.trim();
+      const feedStart=document.getElementById('feedStartInput').value.trim();
+      const feedEnd=document.getElementById('feedEndInput').value.trim();
 
-      const res = await axios.post('/change-settings', {
-        cycle_length: cycle || null,
-        speed_factor: speed || null,
-        day_length: dayLength || null,
-        hex_color: hex || null,
-        feed_start_time: feedStart || null,
-        feed_end_time: feedEnd || null
+      const res=await axios.post('/change-settings',{
+        cycle_length:cycleDays,
+        hex_color:hex||null,
+        feed_start_time:feedStart||null,
+        feed_end_time:feedEnd||null
       });
-
       alert(res.data.message);
       updateSimStatus();
     }
 
-    async function updateSimStatus() {
-      const res = await axios.get('/status');
-      const badge = document.getElementById('simStateBadge');
-      if (res.data['Simulation Started']) {
-        badge.innerText = 'Running';
-        badge.classList.remove('stopped');
-        badge.classList.add('running');
-      } else {
-        badge.innerText = 'Stopped';
-        badge.classList.remove('running');
-        badge.classList.add('stopped');
-      }
+    /* ───── live status update ───── */
+    async function updateSimStatus(){
+      const res=await axios.get('/status');
+      const run=res.data['Simulation Started'];
+
+      const badge=document.getElementById('simStateBadge');
+      badge.innerText=run?'Running':'Stopped';
+      badge.classList.toggle('running',run);
+      badge.classList.toggle('stopped',!run);
+
+      document.getElementById('stTime').innerText =res.data['Sim Time'];
+      document.getElementById('stProg').innerText =res.data['Progress (%)'];
+      document.getElementById('stPhase').innerText=res.data['Phase'];
+      document.getElementById('stAng').innerText  =res.data['Phase Angle'];
+      document.getElementById('stAlt').innerText  =res.data['Altitude (deg)'];
     }
 
-    setInterval(updateSimStatus, 3000);
+    /* initial & periodic refresh */
+    setInterval(updateSimStatus,3000);
     updateSimStatus();
   </script>
 </body>
