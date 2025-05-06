@@ -5,26 +5,21 @@
   <title>Moonlight Simulator Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
-    /* ───── layout ───── */
     body{font-family:Arial,Helvetica,sans-serif;margin:20px;max-width:900px}
     h1{margin-top:0}
     button,input{margin:5px;padding:10px;font-size:14px}
     img{margin-top:20px;max-width:100%;height:auto}
     label{margin-right:5px}
 
-    /* ───── status badges ───── */
     .badge{padding:6px 10px;border-radius:5px;color:#fff;font-weight:bold}
     .running{background:#2e8b57}.stopped{background:#b22222}
 
-    /* live status block */
     #liveStatus{margin-top:15px;padding:10px;background:#f0f0f0;border:1px solid #ccc}
-
-    /* settings panel */
     #settingsPanel{
       display:none;margin-top:20px;padding:15px;background:#fafafa;
       border:1px solid #ccc;border-radius:4px
     }
-    #settingsPanel input{width:135px}
+    #settingsPanel input{width:140px}
   </style>
 </head>
 <body>
@@ -50,7 +45,7 @@
   <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
   <button onclick="plotPhases()">Plot Phases</button>
 
-  <!-- altitude plot for selected day -->
+  <!-- altitude plot -->
   <div>
     <input type="number" id="dayInput" placeholder="Day Index">
     <button onclick="plotAltitude()">Plot Altitude</button>
@@ -72,7 +67,11 @@
 
     <!-- moon colour -->
     <label>Moon Colour Hex (RRGGBB)</label>
-    <input type="text" id="hexInput" placeholder="FF0000"><br><br>
+    <input type="text" id="hexInput" placeholder="FF0000"><br>
+
+    <!-- NEW: length of day -->
+    <label>Length of Day (sec)</label>
+    <input type="number" id="dayLengthInput" placeholder="86400"><br><br>
 
     <button onclick="applySettings()">Apply Settings</button>
     <button onclick="startSimulation()">Start</button>
@@ -84,82 +83,64 @@
   <img id="plotImage" src="" alt="Plot will appear here">
 
   <script>
-    /* ───── helpers ───── */
+    // ── helper to parse DD:HH:MM:SS → integer days ──
     function parseCycleLength(str){
       const parts=str.split(':').map(Number);
       if(parts.length!==4||parts.some(isNaN))return null;
       const [dd,hh,mm,ss]=parts;
-      const days = dd + hh/24 + mm/1440 + ss/86400;
-      return Math.round(days);
+      return Math.round(dd + hh/24 + mm/1440 + ss/86400);
     }
 
-    /* ───── simulation control ───── */
-    async function startSimulation(){
-      const res=await axios.get('/start-simulation');
-      alert(res.data.message);
-      updateSimStatus();
-    }
-    async function endSimulation(){
-      const res=await axios.get('/end-simulation');
-      alert(res.data.message);
-      updateSimStatus();
-    }
+    // ── simulation control ──
+    async function startSimulation(){ alert((await axios.get('/start-simulation')).data.message); updateSimStatus(); }
+    async function endSimulation(){   alert((await axios.get('/end-simulation')).data.message);   updateSimStatus(); }
 
-    /* ───── plotting ───── */
-    async function plotPhaseAngle(){
-      const res=await axios.get('/plot-phase-angle');
-      document.getElementById('plotImage').src=res.data.image;
-    }
-    async function plotRiseSet(){
-      const res=await axios.get('/plot-rise-set');
-      document.getElementById('plotImage').src=res.data.image;
-    }
-    async function plotPhases(){
-      const res=await axios.get('/plot-phases');
-      document.getElementById('plotImage').src=res.data.image;
-    }
+    // ── plotting ──
+    async function plotPhaseAngle(){ document.getElementById('plotImage').src=(await axios.get('/plot-phase-angle')).data.image; }
+    async function plotRiseSet(){    document.getElementById('plotImage').src=(await axios.get('/plot-rise-set')).data.image; }
+    async function plotPhases(){     document.getElementById('plotImage').src=(await axios.get('/plot-phases')).data.image; }
     async function plotAltitude(){
       const day=parseInt(document.getElementById('dayInput').value);
       if(isNaN(day)){alert('Enter a valid day index');return;}
-      const res=await fetch('/plot-altitude',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({day})
-      });
+      const res=await fetch('/plot-altitude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({day})});
       const data=await res.json();
-      if(data.image)document.getElementById('plotImage').src=data.image;
-      else alert(data.error||'Invalid day index');
+      if(data.image)document.getElementById('plotImage').src=data.image; else alert(data.error||'Invalid day index');
     }
 
-    /* ───── settings panel ───── */
+    // ── settings panel ──
     function toggleSettings(){
       const p=document.getElementById('settingsPanel');
-      p.style.display = p.style.display==='none'||!p.style.display? 'block':'none';
+      p.style.display= p.style.display==='none'||!p.style.display? 'block':'none';
     }
     async function applySettings(){
-      const cycleStr=document.getElementById('cycleInput').value.trim();
-      const cycleDays=cycleStr?parseCycleLength(cycleStr):null;
-      if(cycleStr&&cycleDays===null){alert('Invalid cycle length');return;}
+      /* gather inputs */
+      const cycleStr = document.getElementById('cycleInput').value.trim();
+      const cycleDays= cycleStr?parseCycleLength(cycleStr):null;
+      if(cycleStr && cycleDays===null){alert('Invalid cycle length');return;}
 
-      const hex=document.getElementById('hexInput').value.trim();
-      const feedStart=document.getElementById('feedStartInput').value.trim();
-      const feedEnd=document.getElementById('feedEndInput').value.trim();
+      const hex       = document.getElementById('hexInput').value.trim();
+      const feedStart = document.getElementById('feedStartInput').value.trim();
+      const feedEnd   = document.getElementById('feedEndInput').value.trim();
+      const dayLenStr = document.getElementById('dayLengthInput').value.trim();
+      const dayLen    = dayLenStr?Number(dayLenStr):null;
+      if(dayLenStr && (isNaN(dayLen) || dayLen<=0)){alert('Invalid day length');return;}
 
+      /* send to server */
       const res=await axios.post('/change-settings',{
-        cycle_length:cycleDays,
-        hex_color:hex||null,
-        feed_start_time:feedStart||null,
-        feed_end_time:feedEnd||null
+        cycle_length   : cycleDays,
+        hex_color      : hex       || null,
+        feed_start_time: feedStart || null,
+        feed_end_time  : feedEnd   || null,
+        day_length     : dayLen    || null
       });
       alert(res.data.message);
       updateSimStatus();
     }
 
-    /* ───── live status update ───── */
+    // ── live status update ──
     async function updateSimStatus(){
       const res=await axios.get('/status');
       const run=res.data['Simulation Started'];
-
       const badge=document.getElementById('simStateBadge');
       badge.innerText=run?'Running':'Stopped';
       badge.classList.toggle('running',run);
@@ -172,7 +153,6 @@
       document.getElementById('stAlt').innerText  =res.data['Altitude (deg)'];
     }
 
-    /* initial & periodic refresh */
     setInterval(updateSimStatus,3000);
     updateSimStatus();
   </script>
