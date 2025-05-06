@@ -142,11 +142,16 @@ def change_settings():
     state["hex_color"]         = data.get("hex_color")   or state["hex_color"]
     state["feed_start_time"]   = data.get("feed_start_time") or state["feed_start_time"]
     state["feed_end_time"]     = data.get("feed_end_time")   or state["feed_end_time"]
+    state["day_length_in_real_seconds"] = (
+        data.get("day_length") or state["day_length_in_real_seconds"]
+    )
 
-    state["moon_schedule"]   = calculate_moonrise_times(state["user_cycle_length"])
+    # rebuild schedule if cycle length changed
+    state["moon_schedule"]    = calculate_moonrise_times(state["user_cycle_length"])
     state["cycle_start_date"] = datetime.datetime.now()
 
     return jsonify({"message": "Settings updated successfully!"})
+
 
 @app.route("/status")
 def status():
