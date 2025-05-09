@@ -61,7 +61,7 @@ DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 
 def set_servo_angle(angle):
     global current_servo_angle
-    pwm = HardwarePWM(pwm_channel=0, hz=50)
+    pwm = HardwarePWM(pwm_channel=1, hz=50)
     #pwm.start(0)
     duty_cycle = 2.6 + 6.5 * (angle / 180.0)
     pwm.change_duty_cycle(duty_cycle)
@@ -103,7 +103,7 @@ def move_arm_zero(start_angle, end_angle, delay, step):
 
 def set_feeder_angle(feeder_angle):
     #pwm_channel = 1 = pin 13? double check in config.txt file
-    pwm = HardwarePWM(pwm_channel=1, hz=50)
+    pwm = HardwarePWM(pwm_channel=0, hz=50)
     pwm.start(0)
     duty_cycle = 2.6 + 6.5 * (feeder_angle / 180.0)
     pwm.change_duty_cycle(duty_cycle)
@@ -534,6 +534,8 @@ def simulation_loop(
     print("\n[Simulation Thread] Started.")
 
     while not stop_event.is_set():
+        phase_angle = 0.0
+        altitude_deg = 0.0
 
         if simulation_time >= cycle_end_time:
             print("[Simulation Thread] Reached end of the simulation.")
@@ -692,6 +694,7 @@ def simulation_loop(
         time.sleep(sleep_real)
         simulation_time += datetime.timedelta(minutes=update_interval_minutes)
 
+    move_arm(current_servo_angle, 0)
     print("[Simulation Thread] Exiting…")
 
 
@@ -732,7 +735,7 @@ def handle_command(cmd, arg, stop_event, state):
                     state['moon_schedule'],
                     state['cycle_start_date'],
                     state['user_cycle_length'],
-                    1,  # update_interval_minutes
+                    .1,  # update_interval_minutes
                     state['speed_factor'],
                     state['day_length_in_real_seconds'],
                     state['hex_color'],
@@ -781,7 +784,10 @@ def handle_command(cmd, arg, stop_event, state):
 
     elif cmd == 'q':
         print("[Main Thread] User requested quit.")
+        #time.sleep(2)
+        #move_arm(current_servo_angle, 0)
         stop_event.set()
+        
 
     elif cmd == '':
         pass
