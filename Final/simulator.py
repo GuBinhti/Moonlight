@@ -144,6 +144,13 @@ def shake_feeder(): # primary
 #def async_shake():
     #threading.Thread(target=shake_feeder, daemon=True).start
 
+def find_first_day_with_phase(schedule, phase_name):
+    for entry in schedule:
+        if entry['phase'].lower() == phase_name.lower():
+            return entry['day']
+    return 0
+
+
 def get_num_phases(target_cycle_length):
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
     scaled_phases = {}
@@ -486,17 +493,18 @@ def user_input_thread(command_queue, state):
             break
 
 def simulation_loop(
-        schedule,
-        cycle_start_date,
-        user_cycle_length,
-        update_interval_minutes,
-        speed_factor,
-        day_length_in_real_seconds,
-        hex_color,
-        feed_start_time,
-        feed_end_time,
-        stop_event,
-        shared_state=None          # ← pass in the global “state” dict from app.py
+    schedule,
+    cycle_start_date,
+    user_cycle_length,
+    update_interval_minutes,
+    speed_factor,
+    day_length_in_real_seconds,
+    hex_color,
+    feed_start_time,
+    feed_end_time,
+    stop_event,
+    shared_state=None,
+    simulation_start_time=None
 ):
     """
     Advance simulated time, move the servos / feeder, and (optionally)
@@ -506,7 +514,7 @@ def simulation_loop(
 
     real_secs_per_sim_minute = day_length_in_real_seconds / (24 * 60)
 
-    simulation_time = cycle_start_date
+    simulation_time = simulation_start_time or cycle_start_date
     cycle_end_time  = cycle_start_date + datetime.timedelta(days=user_cycle_length)
 
     
@@ -726,7 +734,42 @@ def handle_command(cmd, arg, stop_event, state):
 
     elif cmd == 'start':
         if not state['simulation_started']:
-            print("[Main Thread] Starting simulation now...")
+            # --- gather optional start‑phase and start‑time ------------
+            print("[Main Thread] Starting simulation…")
+            phase_in = input(
+                "Enter starting lunar phase "
+                f"({', '.join(LUNAR_PHASES)} or blank for 'New Moon'): "
+            ).strip()
+            time_in = input("Enter starting time (HH:MM, default 00:00): ").strip()
+
+            if phase_in and phase_in not in LUNAR_PHASES:
+                print("Unrecognised phase – defaulting to New Moon.")
+                phase_in = 'New Moon'
+            if not phase_in:
+                phase_in = 'New Moon'
+
+            # Parse time (default midnight)
+            try:
+                h, m = (int(s) for s in time_in.split(':'))
+                start_clock = datetime.time(h, m)
+            except Exception:
+                start_clock = datetime.time(0, 0)
+
+            # Which day‑offset in the generated schedule corresponds
+            # to the requested starting phase?
+            start_day_offset = find_first_day_with_phase(
+                state['moon_schedule'], phase_in
+            )
+
+            # Build the absolute datetime to hand the loop
+            simulation_start_dt = (
+                state['cycle_start_date']
+                + datetime.timedelta(days=start_day_offset)
+            )
+            simulation_start_dt = simulation_start_dt.replace(
+                hour=start_clock.hour, minute=start_clock.minute
+            )
+
             state['simulation_started'] = True
 
             sim_thread = threading.Thread(
@@ -735,13 +778,15 @@ def handle_command(cmd, arg, stop_event, state):
                     state['moon_schedule'],
                     state['cycle_start_date'],
                     state['user_cycle_length'],
-                    .1,  # update_interval_minutes
+                    0.1,  
                     state['speed_factor'],
                     state['day_length_in_real_seconds'],
                     state['hex_color'],
                     state['feed_start_time'],
                     state['feed_end_time'],
-                    stop_event
+                    stop_event,
+                    state,
+                    simulation_start_dt    
                 ),
                 daemon=True
             )
