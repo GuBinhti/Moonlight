@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Moonlight Simulator Dashboard</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;margin:20px;max-width:900px}
+    h1{margin-top:0}
+    button,input{margin:5px;padding:10px;font-size:14px}
+    img{margin-top:20px;max-width:100%;height:auto}
+    label{margin-right:5px}
+
+    .badge{padding:6px 10px;border-radius:5px;color:#fff;font-weight:bold}
+    .running{background:#2e8b57}.stopped{background:#b22222}
+
+    #liveStatus{margin-top:15px;padding:10px;background:#f0f0f0;border:1px solid #ccc}
+    #settingsPanel{
+      display:none;margin-top:20px;padding:15px;background:#fafafa;
+      border:1px solid #ccc;border-radius:4px
+    }
+    #settingsPanel input{width:140px}
+  </style>
+</head>
+<body>
+  <h1>Moonlight Simulator</h1>
+
+  <!-- running indicator -->
+  <span id="simStateBadge" class="badge stopped">Stopped</span>
+
+  <!-- live status -->
+  <div id="liveStatus">
+    <b>Sim Time:</b> <span id="stTime">‑‑:‑‑:‑‑:‑‑</span><br>
+    <b>Progress:</b> <span id="stProg">0.00</span>%<br>
+    <b>Phase:</b> <span id="stPhase">N/A</span><br>
+    <b>Angle:</b> <span id="stAng">0.00</span>° |
+    <b>Altitude:</b> <span id="stAlt">0.0</span>°
+  </div>
+
+  <!-- quick actions -->
+  <button onclick="startSimulation()">Start Simulation</button>
+  <button onclick="endSimulation()">End Simulation</button>
+  <button onclick="toggleSettings()">Settings</button>
+  <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
+  <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
+
+  <!-- altitude plot -->
+  <div>
+    <input type="number" id="dayInput" placeholder="Day Index">
+    <button onclick="plotAltitude()">Plot Altitude</button>
+  </div>
+
+  <!-- SETTINGS PANEL -->
+  <div id="settingsPanel">
+    <h3>Simulation Settings</h3>
+
+    <!-- cycle length -->
+    <label>Cycle Length (DD:HH:MM:SS)</label>
+    <input type="text" id="cycleInput" placeholder="28:00:00:00"><br>
+
+    <!-- feed times -->
+    <label>Feed Start (HH:MM)</label>
+    <input type="text" id="feedStartInput" placeholder="19:00">
+    <label>Feed End (HH:MM)</label>
+    <input type="text" id="feedEndInput" placeholder="04:00"><br>
+
+    <!-- moon colour -->
+    <label>Moon Colour Hex (RRGGBB)</label>
+    <input type="text" id="hexInput" placeholder="FF0000"><br>
+
+    <!-- length of day -->
+    <label>Length of Day (hours)</label>
+    <input type="number" id="dayLengthHoursInput" placeholder="24" step="0.1"><br>
+
+    <!-- start phase & time -->
+    <label>Start Phase</label>
+    <input list="phaseList" id="startPhaseInput" placeholder="New Moon">
+    <datalist id="phaseList">
+      <option>Full Moon</option><option>Waning Gibbous</option>
+      <option>Last Quarter</option><option>Waning Crescent</option>
+      <option>New Moon</option><option>Waxing Crescent</option>
+      <option>First Quarter</option><option>Waxing Gibbous</option>
+    </datalist>
+    <label>Start Time (HH:MM)</label>
+    <input type="text" id="startTimeInput" placeholder="00:00"><br><br>
+
+    <button onclick="applySettings()">Apply Settings</button>
+    <button onclick="startSimulation()">Start</button>
+    <button onclick="endSimulation()">End</button>
+    <button onclick="toggleSettings()">Close</button>
+  </div>
+
+  <!-- plot image -->
+  <img id="plotImage" src="" alt="Plot will appear here">
+
+  <script>
+    /* ── helper: parse DD:HH:MM:SS → integer days ── */
+    function parseCycleLength(str){
+      const parts=str.split(':').map(Number);
+      if(parts.length!==4||parts.some(isNaN))return null;
+      const [dd,hh,mm,ss]=parts;
+      return Math.round(dd + hh/24 + mm/1440 + ss/86400);
+    }
+
+    /* ── generic helpers ── */
+    async function getJSON(url){
+      const res = await fetch(url);
+      if(!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+    async function postJSON(url,obj){
+      const res = await fetch(url,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(obj)
+      });
+      if(!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    /* ── simulation control ── */
+    async function startSimulation(){
+      try{
+        const data=await getJSON('/start-simulation');
+        alert(data.message);
+        updateSimStatus();
+      }catch(e){alert(e);}
+    }
+    async function endSimulation(){
+      try{
+        const data=await getJSON('/end-simulation');
+        alert(data.message);
+        updateSimStatus();
+      }catch(e){alert(e);}
+    }
+
+    /* ── plotting ── */
+    async function plotPhaseAngle(){
+      try{
+        document.getElementById('plotImage').src=
+          (await getJSON('/plot-phase-angle')).image;
+      }catch(e){alert(e);}
+    }
+    async function plotRiseSet(){
+      try{
+        document.getElementById('plotImage').src=
+          (await getJSON('/plot-rise-set')).image;
+      }catch(e){alert(e);}
+    }
+    async function plotAltitude(){
+      const day=parseInt(document.getElementById('dayInput').value);
+      if(isNaN(day)){alert('Enter a valid day index');return;}
+      try{
+        const data=await postJSON('/plot-altitude',{day});
+        if(data.image) document.getElementById('plotImage').src=data.image;
+        else alert(data.error||'Invalid day index');
+      }catch(e){alert(e);}
+    }
+
+    /* ── settings panel ── */
+    function toggleSettings(){
+      const p=document.getElementById('settingsPanel');
+      p.style.display = (p.style.display==='none'||!p.style.display)? 'block':'none';
+    }
+
+    async function applySettings(){
+      /* gather inputs */
+      const cycleStr  = document.getElementById('cycleInput').value.trim();
+      const cycleDays = cycleStr?parseCycleLength(cycleStr):null;
+      if(cycleStr && cycleDays===null){alert('Invalid cycle length');return;}
+
+      const hex       = document.getElementById('hexInput').value.trim();
+      const feedStart = document.getElementById('feedStartInput').value.trim();
+      const feedEnd   = document.getElementById('feedEndInput').value.trim();
+
+      const dayLenHoursStr = document.getElementById('dayLengthHoursInput').value.trim();
+      let dayLenSecs = null;
+      if(dayLenHoursStr){
+        const hrs = Number(dayLenHoursStr);
+        if(isNaN(hrs)||hrs<=0){alert('Invalid day length');return;}
+        dayLenSecs = Math.round(hrs*3600);
+      }
+
+      const startPhase = document.getElementById('startPhaseInput').value.trim();
+      const startTime  = document.getElementById('startTimeInput').value.trim();
+
+      /* send to server */
+      try{
+        const data = await postJSON('/change-settings',{
+          cycle_length   : cycleDays,
+          hex_color      : hex       || null,
+          feed_start_time: feedStart || null,
+          feed_end_time  : feedEnd   || null,
+          day_length     : dayLenSecs|| null,
+          start_phase    : startPhase|| null,
+          start_time     : startTime || null
+        });
+        alert(data.message);
+        updateSimStatus();
+      }catch(e){alert(e);}
+    }
+
+    /* ── live status update ── */
+    async function updateSimStatus(){
+      try{
+        const data=await getJSON('/status');
+        const run = data['Simulation Started'];
+
+        const badge=document.getElementById('simStateBadge');
+        badge.innerText=run?'Running':'Stopped';
+        badge.classList.toggle('running',run);
+        badge.classList.toggle('stopped',!run);
+
+        document.getElementById('stTime').innerText =data['Sim Time'];
+        document.getElementById('stProg').innerText =data['Progress (%)'];
+        document.getElementById('stPhase').innerText=data['Phase'];
+        document.getElementById('stAng').innerText  =data['Phase Angle'];
+        document.getElementById('stAlt').innerText  =data['Altitude (deg)'];
+      }catch(e){console.error(e);}
+    }
+
+    setInterval(updateSimStatus,3000);
+    updateSimStatus();
+  </script>
+</body>
+</html>
