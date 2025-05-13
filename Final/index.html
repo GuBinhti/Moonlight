@@ -42,6 +42,7 @@
   <button onclick="toggleSettings()">Settings</button>
   <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
   <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
+  <!-- <button onclick="plotPhases()">Plot Phases</button> -->
 
   <!-- altitude plot -->
   <div>
@@ -67,21 +68,9 @@
     <label>Moon Colour Hex (RRGGBB)</label>
     <input type="text" id="hexInput" placeholder="FF0000"><br>
 
-    <!-- length of day -->
+    <!-- length of day (hours) -->
     <label>Length of Day (hours)</label>
-    <input type="number" id="dayLengthHoursInput" placeholder="24" step="0.1"><br>
-
-    <!-- start phase & time -->
-    <label>Start Phase</label>
-    <input list="phaseList" id="startPhaseInput" placeholder="New Moon">
-    <datalist id="phaseList">
-      <option>Full Moon</option><option>Waning Gibbous</option>
-      <option>Last Quarter</option><option>Waning Crescent</option>
-      <option>New Moon</option><option>Waxing Crescent</option>
-      <option>First Quarter</option><option>Waxing Gibbous</option>
-    </datalist>
-    <label>Start Time (HH:MM)</label>
-    <input type="text" id="startTimeInput" placeholder="00:00"><br><br>
+    <input type="number" id="dayLengthHoursInput" placeholder="24" step="0.1"><br><br>
 
     <button onclick="applySettings()">Apply Settings</button>
     <button onclick="startSimulation()">Start</button>
@@ -136,14 +125,17 @@
     /* ── plotting ── */
     async function plotPhaseAngle(){
       try{
-        document.getElementById('plotImage').src=
-          (await getJSON('/plot-phase-angle')).image;
+        document.getElementById('plotImage').src=(await getJSON('/plot-phase-angle')).image;
       }catch(e){alert(e);}
     }
     async function plotRiseSet(){
       try{
-        document.getElementById('plotImage').src=
-          (await getJSON('/plot-rise-set')).image;
+        document.getElementById('plotImage').src=(await getJSON('/plot-rise-set')).image;
+      }catch(e){alert(e);}
+    }
+    async function plotPhases(){
+      try{
+        document.getElementById('plotImage').src=(await getJSON('/plot-phases')).image;
       }catch(e){alert(e);}
     }
     async function plotAltitude(){
@@ -164,8 +156,8 @@
 
     async function applySettings(){
       /* gather inputs */
-      const cycleStr  = document.getElementById('cycleInput').value.trim();
-      const cycleDays = cycleStr?parseCycleLength(cycleStr):null;
+      const cycleStr = document.getElementById('cycleInput').value.trim();
+      const cycleDays= cycleStr?parseCycleLength(cycleStr):null;
       if(cycleStr && cycleDays===null){alert('Invalid cycle length');return;}
 
       const hex       = document.getElementById('hexInput').value.trim();
@@ -176,12 +168,9 @@
       let dayLenSecs = null;
       if(dayLenHoursStr){
         const hrs = Number(dayLenHoursStr);
-        if(isNaN(hrs)||hrs<=0){alert('Invalid day length');return;}
-        dayLenSecs = Math.round(hrs*3600);
+        if(isNaN(hrs) || hrs<=0){ alert('Invalid day length'); return; }
+        dayLenSecs = Math.round(hrs * 3600);    // convert to seconds
       }
-
-      const startPhase = document.getElementById('startPhaseInput').value.trim();
-      const startTime  = document.getElementById('startTimeInput').value.trim();
 
       /* send to server */
       try{
@@ -190,9 +179,7 @@
           hex_color      : hex       || null,
           feed_start_time: feedStart || null,
           feed_end_time  : feedEnd   || null,
-          day_length     : dayLenSecs|| null,
-          start_phase    : startPhase|| null,
-          start_time     : startTime || null
+          day_length     : dayLenSecs|| null
         });
         alert(data.message);
         updateSimStatus();
@@ -215,7 +202,9 @@
         document.getElementById('stPhase').innerText=data['Phase'];
         document.getElementById('stAng').innerText  =data['Phase Angle'];
         document.getElementById('stAlt').innerText  =data['Altitude (deg)'];
-      }catch(e){console.error(e);}
+      }catch(e){
+        console.error(e);
+      }
     }
 
     setInterval(updateSimStatus,3000);
