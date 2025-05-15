@@ -18,12 +18,14 @@ from waveshare_OLED import OLED_1in27_rgb
 from PIL import Image, ImageDraw, ImageFont
 from rpi_hardware_pwm import HardwarePWM
 
-current_servo_angle = 0.0
+current_servo_angle = 0
+# want the feeder to start at 25 degrees
+current_feeder_angle = 25
 
 SUNSET_HOUR  = 14
 SUNRISE_HOUR = 6
 DEFAULT_LUNAR_CYCLE_LENGTH = 28
-SUN_COLOR = '#E56020'
+SUN_COLOR = '#FFFFFF'
 LUNAR_PHASES = [
     'Full Moon',
     'Waning Gibbous',
@@ -62,7 +64,7 @@ DEFAULT_LATER_PER_DAY = (50 * 28) / 29
 def set_servo_angle(angle):
     global current_servo_angle
     pwm = HardwarePWM(pwm_channel=1, hz=50)
-    #pwm.start(0)
+    pwm.start(0)
     duty_cycle = 2.6 + 6.5 * (angle / 180.0)
     pwm.change_duty_cycle(duty_cycle)
     current_servo_angle = angle
@@ -78,7 +80,6 @@ def move_arm(start_angle, end_angle, delay= 0.05, step=1):
         angle_range = range(int(start_angle), int(end_angle) - 1, -int(step))
     for angle in angle_range:
         set_servo_angle(angle)
-        '''thread this sleep bc it stops the entire sim'''
         time.sleep(delay) 
         print(f"Moving arm to {angle}°")
         #print(f"This is the delay: {delay}")
@@ -102,47 +103,61 @@ def move_arm_zero(start_angle, end_angle, delay, step):
             print(f"Moving arm to this {current_servo_angle}°")
 
 def set_feeder_angle(feeder_angle):
+    global current_feeder_angle
     #pwm_channel = 1 = pin 13? double check in config.txt file
     pwm = HardwarePWM(pwm_channel=0, hz=50)
     pwm.start(0)
-    duty_cycle = 2.6 + 6.5 * (feeder_angle / 180.0)
+    duty_cycle = 2.6 + 10.5 * (feeder_angle / 180.0)
     pwm.change_duty_cycle(duty_cycle)
+    current_feeder_angle = feeder_angle
+
     return duty_cycle
 
-def move_feeder(start_angle, end_angle, delay, step=1):
+def move_feeder(start_angle, end_angle, stop_event = None, delay=0.05, step=1):
     if start_angle < end_angle:
         angle_range = range(int(start_angle), int(end_angle) + 1, int(step))
     else:
         angle_range = range(int(start_angle), int(end_angle) - 1, -int(step))
+
+    # if stop_event is None:
+    #     stop_event = threading.Event()
     
     for angle in angle_range:
-        set_feeder_angle(angle)
-        '''thread this sleep bc it stops the entire sim'''
-        time.sleep(delay) 
-        #print(f"Moving feeder to {angle}°")
-        #print(f"This is the delay: {delay}")
+        # if stop_event.is_set():
+        #     return
+        # else:
+            set_feeder_angle(angle)
+            '''thread this sleep bc it stops the entire sim'''
+            time.sleep(delay) 
+    
 
 def drop_feeder(): #primary
-    move_feeder(0, 120, step=1, delay=0.05)
-
-#def async_drop():
-    #threading.Thread(target=drop_feeder, daemon=True).start
+    move_feeder(current_feeder_angle, 120, step=1, delay=0.05)
 
 def reset_feeder():
-    move_feeder(120, 0, step=1, delay=0.05)
+    move_feeder(current_feeder_angle, 25, delay=0.05, step=1)
 
-#threading.Thread(target=reset_feeder, daemon=True).start
+def return_feeder():
+    move_feeder(120, 25, delay = 0.05, step =1)
 
 def shake_feeder(): # primary
-    #drop_feeder()
     # Shake the feeder by moving it back and forth
-    for _ in range(5):
-        move_feeder(120, 80, step=5, delay=0.05)
-        move_feeder(80, 120, step=5, delay=0.05)
+    for _ in range(1):
+        move_feeder(current_feeder_angle, 80, delay=0.05, step=5)
+        move_feeder(current_feeder_angle, 120, delay=0.05, step=5)
     reset_feeder()
 
-#def async_shake():
-    #threading.Thread(target=shake_feeder, daemon=True).start
+def drop_alarm():
+    drop_feeder()
+    print(f"Feeder Dropped")
+    timer_flag = False
+
+def feeding_alarm():
+    print(f"Feeder Reset")
+    return_feeder()
+    #shake_feeder()
+    reset_feeder()
+    timer_flag = False
 
 def get_num_phases(target_cycle_length):
     scalar = target_cycle_length / DEFAULT_LUNAR_CYCLE_LENGTH
@@ -443,10 +458,47 @@ def prompt_hex_with_skip(prompt, current_value):
         except ValueError:
             print("Invalid input. Please enter a valid hex value or press Enter to keep current value.")
 
+def prompt_time_with_skip(prompt, current_value):
+    while True:
+        val = input(f"{prompt} (current={current_value}): ").strip()
+        if not val:  # skip
+            return None
+        try:
+            time.strptime(val, "%H:%M")
+            return val
+        except ValueError:
+            print("Invalid input. Please enter a valid time in HH:MM format or press Enter to keep current value.")
+
+def prompt_yes_no_with_skip(prompt, current_value):
+    while True:
+        val = input(f"{prompt} (Y/N) (current={current_value}): ").strip().lower()
+        if val in ['y', 'yes']:
+            return True
+        elif val in ['n', 'no']:
+            return False
+        else:
+            print("Invalid input. Please enter 'Y' or 'N'.")
+
+# def prompt_time_hours(prompt):
+#     while True:
+#         val = input(f"{prompt}: ").strip()
+#         # don’t allow blank—instead re‑prompt
+#         if not val:
+#             print("This field is required; please enter a time in HH:MM format.")
+#             continue
+
+#         try:
+#             hour, minute = map(int, val.split(':'))
+#             if 0 <= hour < 24 and 0 <= minute < 60:
+#                 return hour * 3600 + minute * 60
+#         except (ValueError, TypeError):
+#             pass
+
+#         print("Invalid input. Please enter a valid time in HH:MM format (e.g. 02:30).")
+
 def decimal_to_hex(decimal):
     hex_value = hex(decimal)[2:].upper()
     return hex_value.zfill(6)
-
 
 def user_input_thread(command_queue, state):
     while True:
@@ -465,19 +517,28 @@ def user_input_thread(command_queue, state):
             command_queue.put(('pa', day_str))
 
         elif cmd == "change":
+            drop_countdown = None
+            end_feed_countdown = None
             print("[User Input Thread] Changing user options...")
             new_cycle_length = prompt_int_with_skip("Enter new lunar cycle length", state['user_cycle_length'])
             new_speed = prompt_float_with_skip("Enter new speed factor", state['speed_factor'])
             new_day_length = prompt_float_with_skip("Enter new real-time seconds for 24-hour sim-day", state['day_length_in_real_seconds'])
             new_hex_color = prompt_hex_with_skip("Enter new hex color", state['hex_color'])
-            new_feed_start_time = input("Enter new feeder start time (HH:MM): ").strip()
-            new_feed_end_time = input("Enter new feeder end time (HH:MM): ").strip()
-
-
-            command_queue.put(('change', (new_cycle_length, new_speed, new_day_length, new_hex_color, new_feed_start_time, new_feed_end_time)))
+            new_feed_start_time = prompt_time_with_skip("Enter new feeder start time (HH:MM)", state['feed_start_time'])
+            new_feed_end_time = prompt_time_with_skip("Enter new feeder end time (HH:MM)", state['feed_end_time'])
+            independent_timer = prompt_yes_no_with_skip("Do you want to use an independent timer for feeder?", state['independent_timer'])
+            if independent_timer:
+                drop_countdown = prompt_time_with_skip("Enter time to drop feeder (HH:MM)", state['drop_countdown'])
+                print(f"Drop time: {drop_countdown}")
+                end_feed_countdown = prompt_time_with_skip("Enter time to end feeding (HH:MM)", state['end_feed_countdown'])
+                print(f"End feed time: {end_feed_countdown}")
+            command_queue.put(('change', (new_cycle_length, new_speed, new_day_length, new_hex_color, new_feed_start_time,
+                                           new_feed_end_time, independent_timer, drop_countdown, end_feed_countdown)))
 
         elif cmd == "status":
             command_queue.put(('status', None))
+
+        #elif cmd == "reset":
 
         else:
             command_queue.put((cmd, None))
@@ -495,6 +556,9 @@ def simulation_loop(
         hex_color,
         feed_start_time,
         feed_end_time,
+        independent_timer,
+        drop_countdown,
+        end_feed_countdown,
         stop_event,
         shared_state=None          # ← pass in the global “state” dict from app.py
 ):
@@ -522,16 +586,23 @@ def simulation_loop(
 
     servo_thread  = None
     last_motion_type  = None 
+
+    feeder_thread = None
+    
     
     global compare_alt
     compare_alt = None
 
     sun_reset_moved = False
-    start_up_flag = False
+
+ 
+    feed_check = None
+    drop_check = None
 
 
 
     print("\n[Simulation Thread] Started.")
+    print(f" Independent Timer: {independent_timer}")
 
     while not stop_event.is_set():
         phase_angle = 0.0
@@ -557,6 +628,7 @@ def simulation_loop(
 
         # check if thread is finsihed
         can_move = (servo_thread is None) or (not servo_thread.is_alive())
+        feeder_can_move = (feeder_thread is None) or (not feeder_thread.is_alive())
 
 
         current_entry = find_schedule_entry_for_time(
@@ -649,13 +721,38 @@ def simulation_loop(
             servo_thread.start()
             moon_reset_moved = True        
                 
-                
+        
 
-        if simulation_time.strftime('%H:%M') == feed_start_time:
-            threading.Thread(target=drop_feeder,  daemon=True).start()
-        if simulation_time.strftime('%H:%M') == feed_end_time:
-            threading.Thread(target=shake_feeder, daemon=True).start()
+        if simulation_time.strftime('%H:%M') == feed_start_time and independent_timer == False and feeder_can_move:
+            print("It's FEEDING TIME")
+            feeder_thread = threading.Thread(target=drop_feeder,  daemon=True)
+            feeder_thread.start()
 
+        if simulation_time.strftime('%H:%M') == feed_end_time and independent_timer == False and feeder_can_move:
+            feeder_thread = threading.Thread(target=shake_feeder, daemon=True)
+            feeder_thread.start()
+
+        real_time = datetime.datetime.now()
+
+        if simulation_time.strftime('%H:%M') == drop_countdown and independent_timer == True and feeder_can_move and drop_check == False:
+            drop_check = True
+            feeder_thread = threading.Thread(target=drop_alarm, daemon=True)
+            feeder_thread.start()
+            print(f"Independent Timer Started")
+
+        if simulation_time.strftime('%H:%M') == end_feed_countdown and independent_timer == True and feeder_can_move and feed_check == False:
+            feed_check = True
+            feeder_thread = threading.Thread(target=feeding_alarm, daemon=True)
+            feeder_thread.start()
+            print(f"Independent Timer Ended")
+
+        if simulation_time.strftime('%H:%M') != feed_check:
+            feed_check = False
+        if simulation_time.strftime('%H:%M') != drop_check:
+            drop_check = False
+            
+            
+        
         is_day   = SUNRISE_HOUR <= simulation_time.hour < SUNSET_HOUR
         is_night = not is_day
 
@@ -694,8 +791,34 @@ def simulation_loop(
         time.sleep(sleep_real)
         simulation_time += datetime.timedelta(minutes=update_interval_minutes)
 
-    move_arm(current_servo_angle, 0)
     print("[Simulation Thread] Exiting…")
+
+    move_arm(current_servo_angle, 0)
+    reset_feeder()
+
+
+
+
+
+    can_move = (servo_thread is None) or (not servo_thread.is_alive())
+    feeder_can_move = (feeder_thread is None) or (not feeder_thread.is_alive())
+    if can_move:
+        servo_thread = threading.Thread(target=move_arm, args = (current_servo_angle, 0), daemon=True)
+        servo_thread.start()
+    else:
+        servo_thread.join()
+        servo_thread = threading.Thread(target=move_arm, args = (current_servo_angle, 0), daemon=True)
+        servo_thread.start()
+    if feeder_can_move:
+        feeder_thread = threading.Thread(target=move_feeder, args= (current_feeder_angle, 25, 0.05, 1), daemon=True)
+        feeder_thread.start()
+    else:
+        feeder_thread.join()
+        feeder_thread = threading.Thread(target=move_feeder, args=(current_feeder_angle,20,0.05, 1), daemon=True)
+        feeder_thread.start()
+    
+    
+
 
 
 def handle_command(cmd, arg, stop_event, state):
@@ -741,6 +864,9 @@ def handle_command(cmd, arg, stop_event, state):
                     state['hex_color'],
                     state['feed_start_time'],
                     state['feed_end_time'],
+                    state['independent_timer'],
+                    state['drop_countdown'],
+                    state['end_feed_countdown'],
                     stop_event
                 ),
                 daemon=True
@@ -751,7 +877,7 @@ def handle_command(cmd, arg, stop_event, state):
             print("[Main Thread] Simulation is already running.")
 
     elif cmd == 'change':
-        new_cycle_length, new_speed, new_day_length, new_hex_color, new_feed_time, new_feed_end_time = arg
+        new_cycle_length, new_speed, new_day_length, new_hex_color, new_feed_time, new_feed_end_time, independent_timer, drop_countdown, end_feed_countdown = arg
         # If the user typed nothing, it's None -> keep old value
         if new_cycle_length is not None:
             state['user_cycle_length'] = new_cycle_length
@@ -765,7 +891,12 @@ def handle_command(cmd, arg, stop_event, state):
             state['feed_time'] = new_feed_time
         if new_feed_end_time is not None:
             state['feed_end_time'] = new_feed_end_time
-        #if new_feed_time is not None:
+        if independent_timer is not None:
+            state['independent_timer'] = independent_timer
+        if drop_countdown is not None:
+            state['drop_countdown'] = drop_countdown
+        if end_feed_countdown is not None:
+            state['end_feed_countdown'] = end_feed_countdown
 
         # Recompute schedule
         state['moon_schedule'] = calculate_moonrise_times(state['user_cycle_length'])
@@ -775,16 +906,21 @@ def handle_command(cmd, arg, stop_event, state):
 
     elif cmd == 'status':
         print("[Main Thread] Current Simulation Parameters:")
-        print(f"  Cycle Length  : {state['user_cycle_length']}")
-        print(f"  Speed Factor  : {state['speed_factor']}")
-        print(f"  Day Length (s): {state['day_length_in_real_seconds']}")
-        print(f"  Hex Color     : {state['hex_color']}")
-        print(f"  Start Date    : {state['cycle_start_date']}")
         print(f"  Sim Started?  : {state['simulation_started']}")
+        print(f"  Start Date    : {state['cycle_start_date']}")
+        print(f"  Cycle Length  : {state['user_cycle_length']}")
+        print(f"  Day Length (s): {state['day_length_in_real_seconds']}")
+        print(f"  Speed Factor  : {state['speed_factor']}")
+        print(f"  Hex Color     : {state['hex_color']}")
+        print(f"  Feed Start    : {state['feed_start_time']}")
+        print(f"  Feed End      : {state['feed_end_time']}")
+        print(f"  Independent Timer: {state['independent_timer']}")
+        print(f"  Drop Time (Real World): {state['drop_countdown']}")
+        print(f"  End Feed Time (Real World): {state['end_feed_countdown']}")
+        
 
     elif cmd == 'q':
         print("[Main Thread] User requested quit.")
-        #time.sleep(2)
         #move_arm(current_servo_angle, 0)
         stop_event.set()
         
@@ -798,7 +934,7 @@ def handle_command(cmd, arg, stop_event, state):
 def main():
     user_cycle_length = DEFAULT_LUNAR_CYCLE_LENGTH
     speed_factor = 1.0
-    day_length_in_real_seconds = 86400.0
+    day_length_in_real_seconds = 30
     hex_color = 'FF0000'  # Default color (red)
 
     # Build initial schedule
@@ -815,6 +951,9 @@ def main():
         'hex_color': hex_color,
         'feed_start_time': '19:00',
         'feed_end_time' : '04:00',
+        'independent_timer': False,
+        'drop_countdown': '06:00',
+        'end_feed_countdown': '08:00',
         'simulation_thread': None,
         'simulation_started': False,
     }
