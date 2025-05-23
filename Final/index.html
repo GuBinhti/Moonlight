@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,206 +10,322 @@
     button,input{margin:5px;padding:10px;font-size:14px}
     img{margin-top:20px;max-width:100%;height:auto}
     label{margin-right:5px}
-
     .badge{padding:6px 10px;border-radius:5px;color:#fff;font-weight:bold}
     .running{background:#2e8b57}.stopped{background:#b22222}
-
-    #liveStatus{margin-top:15px;padding:10px;background:#f0f0f0;border:1px solid #ccc}
-    #settingsPanel{
-      display:none;margin-top:20px;padding:15px;background:#fafafa;
-      border:1px solid #ccc;border-radius:4px
-    }
+    #liveStatus{margin-top:15px;padding:10px;background:#f0f0f0;border:1px solid #ccc; width: 700px; border-radius:4px;}
+    #settingsPanel{display:none;margin-top:20px;padding:15px;background:#fafafa;
+      border:1px solid #ccc;border-radius:4px; width: 700px}
     #settingsPanel input{width:140px}
+    .timer-config{margin:8px 0;padding:8px;background:#eef;border-radius:4px}
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 100px 200px 100px 250px;
+      gap: 0px 10px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .settingsbutton-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 150px); /* ✅ Equal 4-column layout */
+      gap: 10px 20px;
+      margin-top: 10px;
+    }
+    .settingsbutton-grid button {
+      width: 100%; /* ✅ Buttons will expand to fill each cell */
+    }
+
   </style>
 </head>
 <body>
   <h1>Moonlight Simulator</h1>
 
-  <!-- running indicator -->
   <span id="simStateBadge" class="badge stopped">Stopped</span>
 
-  <!-- live status -->
   <div id="liveStatus">
-    <b>Sim Time:</b> <span id="stTime">‑‑:‑‑:‑‑:‑‑</span><br>
+    <b>Sim Time:</b> <span id="stTime">--:--:--:--</span><br>
     <b>Progress:</b> <span id="stProg">0.00</span>%<br>
     <b>Phase:</b> <span id="stPhase">N/A</span><br>
     <b>Angle:</b> <span id="stAng">0.00</span>° |
     <b>Altitude:</b> <span id="stAlt">0.0</span>°
   </div>
 
-  <!-- quick actions -->
   <button onclick="startSimulation()">Start Simulation</button>
   <button onclick="endSimulation()">End Simulation</button>
   <button onclick="toggleSettings()">Settings</button>
   <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
   <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
-  <!-- <button onclick="plotPhases()">Plot Phases</button> -->
 
-  <!-- altitude plot -->
   <div>
-    <input type="number" id="dayInput" placeholder="Day Index">
+    <label>Day (1–N):</label>
+    <input type="number" id="dayInput" min="1" placeholder="1">
     <button onclick="plotAltitude()">Plot Altitude</button>
   </div>
 
+
+
+
+
+
   <!-- SETTINGS PANEL -->
+
+
   <div id="settingsPanel">
     <h3>Simulation Settings</h3>
+    <div class="settings-grid">
 
-    <!-- cycle length -->
-    <label>Cycle Length (DD:HH:MM:SS)</label>
-    <input type="text" id="cycleInput" placeholder="28:00:00:00"><br>
+    <label>Cycle Length (days)</label>
+    <input type="number" id="cycleInput" placeholder="28" min="1" step="1">
 
-    <!-- feed times -->
-    <label>Feed Start (HH:MM)</label>
+    <label>Independent Timer</label>
+    <select id="independentTimerInput" style="width:160px;">
+      <option value="" disabled selected hidden>— select —</option>
+      <option value="No" selected="">No</option>
+      <option value="Yes">Yes</option>
+    </select>
+
+
+    <!-- <label>Feed Start (HH:MM)</label>
     <input type="text" id="feedStartInput" placeholder="19:00">
     <label>Feed End (HH:MM)</label>
-    <input type="text" id="feedEndInput" placeholder="04:00"><br>
+    <input type="text" id="feedEndInput" placeholder="04:00"> -->
 
-    <!-- moon colour -->
     <label>Moon Colour Hex (RRGGBB)</label>
-    <input type="text" id="hexInput" placeholder="FF0000"><br>
+    <input type="text" id="hexInput" placeholder="FF0000">
 
-    <!-- length of day (hours) -->
     <label>Length of Day (hours)</label>
-    <input type="number" id="dayLengthHoursInput" placeholder="24" step="0.1"><br><br>
+    <input type="number" id="dayLengthHoursInput" placeholder="24" step="0.1">
 
-    <button onclick="applySettings()">Apply Settings</button>
-    <button onclick="startSimulation()">Start</button>
-    <button onclick="endSimulation()">End</button>
-    <button onclick="toggleSettings()">Close</button>
+    <label>Start Phase</label>
+    <input list="phaseList" id="startPhaseInput" placeholder="Full Moon">
+    <datalist id="phaseList">
+      <option>Full Moon</option>
+      <option>Waning Gibbous</option>
+      <option>Last Quarter</option>
+      <option>Waning Crescent</option>
+      <option>New Moon</option>
+      <option>Waxing Crescent</option>
+      <option>First Quarter</option>
+      <option>Waxing Gibbous</option>
+    </datalist>
+
+    <label>Start Time</label>
+    <input type="text" id="startTimeInput" placeholder="00:00">
+
+    <div id="timerOptionYes" class="timer-config" style="display:none; grid-column: 1 / -1; 
+      display: flex; justify-content: center; align-items: center; gap: 0 10px;">
+      <label for="dropCountdownInput">Real World Feed Start Time</label>
+      <input type="text" id="dropCountdownInput" placeholder="19:00"><br>
+      <label for="endFeedCountdownInput">Real World Feed End Time</label>
+      <input type="text" id="endFeedCountdownInput" placeholder="04:00">
+    </div>
+
+    <div id="timerOptionNo" class="timer-config" style="display:none; grid-column: 1 / -1; 
+      display: flex; justify-content: center; align-items: center; gap: 0 10px;">
+      <label for="feedStartInput">Sim. Feed Start Time</label>
+      <input type="text" id="feedStartInput" placeholder="19:00"><br>
+      <label for="feedEndInput">Sim. Feed End Time</label>
+      <input type="text" id="feedEndInput" placeholder="04:00">
+    </div>
+    
+
+
+    
+
   </div>
+  <div class="settingsbutton-grid">
+  <button onclick="toggleSettings()">Close</button>
+  <button onclick="applySettings()">Apply Settings</button>
+  <button onclick="startSimulation()">Start</button>
+  <button onclick="endSimulation()">End</button>
+  </div>
+  
+</div>
 
-  <!-- plot image -->
-  <img id="plotImage" src="" alt="Plot will appear here">
+
+<img id="plotImage" src="" alt="Plot will appear here">
 
   <script>
-    /* ── helper: parse DD:HH:MM:SS → integer days ── */
-    function parseCycleLength(str){
-      const parts=str.split(':').map(Number);
-      if(parts.length!==4||parts.some(isNaN))return null;
-      const [dd,hh,mm,ss]=parts;
-      return Math.round(dd + hh/24 + mm/1440 + ss/86400);
-    }
-
-    /* ── generic helpers ── */
     async function getJSON(url){
-      const res = await fetch(url);
-      if(!res.ok) throw new Error(await res.text());
-      return res.json();
+      const r = await fetch(url);
+      if(!r.ok) throw new Error(await r.text());
+      return r.json();
     }
     async function postJSON(url,obj){
-      const res = await fetch(url,{
+      const r = await fetch(url, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify(obj)
       });
-      if(!res.ok) throw new Error(await res.text());
-      return res.json();
+      if(!r.ok) throw new Error(await r.text());
+      return r.json();
     }
 
-    /* ── simulation control ── */
+    document.addEventListener('DOMContentLoaded', () => {
+      const sel = document.getElementById('independentTimerInput');
+      const timerYes = document.getElementById('timerOptionYes');
+      const timerNo = document.getElementById('timerOptionNo');
+
+      function updateTimerVisibility() {
+        if (sel.value === 'Yes') {
+          timerYes.style.display = 'block';
+          timerNo.style.display  = 'none';
+        } else if (sel.value === 'No'){
+          timerYes.style.display = 'none';
+          timerNo.style.display  = 'block';
+        }
+        else {
+          timerYes.style.display = 'none';
+          timerNo.style.display  = 'none';
+        }
+      }
+      
+      sel.addEventListener('change', updateTimerVisibility);
+        updateTimerVisibility();
+      });
+
     async function startSimulation(){
-      try{
-        const data=await getJSON('/start-simulation');
+      try {
+        const data = await getJSON('/start-simulation');
         alert(data.message);
         updateSimStatus();
-      }catch(e){alert(e);}
+      } catch(e){ alert(e); }
     }
     async function endSimulation(){
-      try{
-        const data=await getJSON('/end-simulation');
+      try {
+        const data = await getJSON('/end-simulation');
         alert(data.message);
         updateSimStatus();
-      }catch(e){alert(e);}
+      } catch(e){ alert(e); }
     }
 
-    /* ── plotting ── */
     async function plotPhaseAngle(){
-      try{
-        document.getElementById('plotImage').src=(await getJSON('/plot-phase-angle')).image;
-      }catch(e){alert(e);}
+      try {
+        const d = await getJSON('/plot-phase-angle');
+        document.getElementById('plotImage').src = d.image;
+      } catch(e){ alert(e); }
     }
     async function plotRiseSet(){
-      try{
-        document.getElementById('plotImage').src=(await getJSON('/plot-rise-set')).image;
-      }catch(e){alert(e);}
+      try {
+        const d = await getJSON('/plot-rise-set');
+        document.getElementById('plotImage').src = d.image;
+      } catch(e){ alert(e); }
     }
-    async function plotPhases(){
-      try{
-        document.getElementById('plotImage').src=(await getJSON('/plot-phases')).image;
-      }catch(e){alert(e);}
-    }
+
     async function plotAltitude(){
-      const day=parseInt(document.getElementById('dayInput').value);
-      if(isNaN(day)){alert('Enter a valid day index');return;}
-      try{
-        const data=await postJSON('/plot-altitude',{day});
-        if(data.image) document.getElementById('plotImage').src=data.image;
-        else alert(data.error||'Invalid day index');
-      }catch(e){alert(e);}
-    }
-
-    /* ── settings panel ── */
-    function toggleSettings(){
-      const p=document.getElementById('settingsPanel');
-      p.style.display = (p.style.display==='none'||!p.style.display)? 'block':'none';
-    }
-
-    async function applySettings(){
-      /* gather inputs */
-      const cycleStr = document.getElementById('cycleInput').value.trim();
-      const cycleDays= cycleStr?parseCycleLength(cycleStr):null;
-      if(cycleStr && cycleDays===null){alert('Invalid cycle length');return;}
-
-      const hex       = document.getElementById('hexInput').value.trim();
-      const feedStart = document.getElementById('feedStartInput').value.trim();
-      const feedEnd   = document.getElementById('feedEndInput').value.trim();
-
-      const dayLenHoursStr = document.getElementById('dayLengthHoursInput').value.trim();
-      let dayLenSecs = null;
-      if(dayLenHoursStr){
-        const hrs = Number(dayLenHoursStr);
-        if(isNaN(hrs) || hrs<=0){ alert('Invalid day length'); return; }
-        dayLenSecs = Math.round(hrs * 3600);    // convert to seconds
+      const dayNum = parseInt(document.getElementById('dayInput').value, 10);
+      if (isNaN(dayNum) || dayNum < 1) {
+        alert('Enter a valid day (1–N)');
+        return;
       }
-
-      /* send to server */
-      try{
-        const data = await postJSON('/change-settings',{
-          cycle_length   : cycleDays,
-          hex_color      : hex       || null,
-          feed_start_time: feedStart || null,
-          feed_end_time  : feedEnd   || null,
-          day_length     : dayLenSecs|| null
-        });
-        alert(data.message);
-        updateSimStatus();
-      }catch(e){alert(e);}
+      try {
+        const d = await postJSON('/plot-altitude', { day: dayNum });
+        if (d.image) {
+          document.getElementById('plotImage').src = d.image;
+        } 
+        else {
+          alert(d.error || 'Invalid day');
+        }
+      } 
+      catch (e) {alert(e);}
     }
 
-    /* ── live status update ── */
     async function updateSimStatus(){
-      try{
-        const data=await getJSON('/status');
-        const run = data['Simulation Started'];
+      try {
+        const s = await getJSON('/status');
+        const run = s['Simulation Started'];
+        // update badge
+        const badge = document.getElementById('simStateBadge');
+        badge.innerText = run ? 'Running' : 'Stopped';
+        badge.classList.toggle('running', run);
+        badge.classList.toggle('stopped', !run);
 
-        const badge=document.getElementById('simStateBadge');
-        badge.innerText=run?'Running':'Stopped';
-        badge.classList.toggle('running',run);
-        badge.classList.toggle('stopped',!run);
+        // update live fields
+        document.getElementById('stTime').innerText  = s['Sim Time'];
+        document.getElementById('stProg').innerText  = s['Progress (%)'];
+        document.getElementById('stPhase').innerText = s['Phase'];
+        document.getElementById('stAng').innerText   = s['Phase Angle'];
+        document.getElementById('stAlt').innerText   = s['Altitude (deg)'];
 
-        document.getElementById('stTime').innerText =data['Sim Time'];
-        document.getElementById('stProg').innerText =data['Progress (%)'];
-        document.getElementById('stPhase').innerText=data['Phase'];
-        document.getElementById('stAng').innerText  =data['Phase Angle'];
-        document.getElementById('stAlt').innerText  =data['Altitude (deg)'];
-      }catch(e){
+        // clamp day-input to current cycle length
+        const cycleLen = s['Cycle Length'];
+        const dayInput = document.getElementById('dayInput');
+        dayInput.max = cycleLen;
+      } catch(e){
         console.error(e);
       }
     }
 
-    setInterval(updateSimStatus,3000);
+    async function populateSettings(){
+      const s = await getJSON('/status');
+      document.getElementById('cycleInput').value       = s['Cycle Length'];
+      document.getElementById('feedStartInput').value   = s['Feed Start'] || '';
+      document.getElementById('feedEndInput').value     = s['Feed End']   || '';
+      document.getElementById('hexInput').value         = s['Hex Color']  || '';
+      document.getElementById('dayLengthHoursInput').value =
+        (s['Day Length (s)']/3600) || '';
+      document.getElementById('startPhaseInput').value  = s['Start Phase'] || '';
+      document.getElementById('startTimeInput').value   = s['Start Time']  || '';
+      document.getElementById('independentTimerInput').value = s['Independent Timer'] ? 'Yes' : 'No';
+      document.getElementById('dropCountdownInput').value = s['Feed Start 1'] || '';
+      document.getElementById('endFeedCountdownInput').value = s['Feed End 1'] || '';
+    }
+
+    function toggleSettings(){
+      const p = document.getElementById('settingsPanel');
+      if(p.style.display==='block'){
+        p.style.display='none';
+      } else {
+        populateSettings();
+        p.style.display='block';
+      }
+    }
+
+    async function applySettings(){
+      const payload = {};
+      const cd = parseInt(document.getElementById('cycleInput').value, 10);
+      if(!isNaN(cd)){
+        if(cd < 1){ alert('Cycle length must be ≥ 1'); return; }
+        payload.cycle_length = cd;
+      }
+      const fs = document.getElementById('feedStartInput').value.trim();
+      if(fs) payload.feed_start_time = fs;
+      const fe = document.getElementById('feedEndInput').value.trim();
+      if(fe) payload.feed_end_time = fe;
+      const hx = document.getElementById('hexInput').value.trim();
+      if(hx) payload.hex_color = hx;
+      const dh = document.getElementById('dayLengthHoursInput').value.trim();
+      if(dh){
+        const hrs = Number(dh);
+        if(isNaN(hrs)||hrs<=0){ alert('Invalid day length'); return; }
+        payload.day_length = Math.round(hrs*3600);
+      }
+      const sp = document.getElementById('startPhaseInput').value.trim();
+      if(sp) payload.start_phase = sp;
+      const st = document.getElementById('startTimeInput').value.trim();
+      if(st) payload.start_time = st;
+      // include just independent timer flag
+      payload.independent_timer = document.getElementById('independentTimerInput').value === 'Yes';
+      if(payload.independent_timer){
+        const drop = document.getElementById('dropCountdownInput').value.trim(); if(drop) payload.drop_countdown = drop;
+        const endFeed = document.getElementById('endFeedCountdownInput').value.trim(); if(endFeed) payload.end_feed_countdown = endFeed;
+      }
+  
+
+      try {
+        const res = await postJSON('/change-settings', payload);
+        alert(res.message);
+        toggleSettings();
+      } catch(e){
+        alert(e);
+      }
+    }
+
+    // refresh status every 3s
+    setInterval(updateSimStatus, 3000);
     updateSimStatus();
   </script>
 </body>
 </html>
+
+
