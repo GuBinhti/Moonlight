@@ -1,22 +1,111 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Moonlight Simulator Dashboard</title>
+  <title>GIBBOUS Dashboard</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:20px;max-width:900px}
-    h1{margin-top:0}
+    body{font-family:Arial,Helvetica,sans-serif;margin:20px;max-width:1400px;position:relative;overflow-x:hidden}
+    h1{margin-top:0;font-size:2.5em;font-weight:bold;color:#2c3e50;text-shadow:2px 2px 4px rgba(0,0,0,0.1)}
     button,input{margin:5px;padding:10px;font-size:14px}
     img{margin-top:20px;max-width:100%;height:auto}
     label{margin-right:5px}
     .badge{padding:6px 10px;border-radius:5px;color:#fff;font-weight:bold}
     .running{background:#2e8b57}.stopped{background:#b22222}
-    #liveStatus{margin-top:15px;padding:10px;background:#f0f0f0;border:1px solid #ccc; width: 700px; border-radius:4px;}
-    #settingsPanel{display:none;margin-top:20px;padding:15px;background:#fafafa;
-      border:1px solid #ccc;border-radius:4px; width: 700px}
+    
+    /* Particle Background */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    .particle {
+      position: absolute;
+      background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+      border-radius: 50%;
+      animation: float 6s ease-in-out infinite;
+    }
+    
+    .particle:nth-child(1) { width: 4px; height: 4px; left: 10%; animation-delay: 0s; animation-duration: 8s; }
+    .particle:nth-child(2) { width: 6px; height: 6px; left: 20%; animation-delay: 1s; animation-duration: 10s; }
+    .particle:nth-child(3) { width: 3px; height: 3px; left: 30%; animation-delay: 2s; animation-duration: 7s; }
+    .particle:nth-child(4) { width: 5px; height: 5px; left: 40%; animation-delay: 3s; animation-duration: 9s; }
+    .particle:nth-child(5) { width: 4px; height: 4px; left: 50%; animation-delay: 4s; animation-duration: 8s; }
+    .particle:nth-child(6) { width: 7px; height: 7px; left: 60%; animation-delay: 5s; animation-duration: 11s; }
+    .particle:nth-child(7) { width: 3px; height: 3px; left: 70%; animation-delay: 6s; animation-duration: 6s; }
+    .particle:nth-child(8) { width: 5px; height: 5px; left: 80%; animation-delay: 7s; animation-duration: 9s; }
+    .particle:nth-child(9) { width: 4px; height: 4px; left: 90%; animation-delay: 8s; animation-duration: 8s; }
+    .particle:nth-child(10) { width: 6px; height: 6px; left: 15%; animation-delay: 9s; animation-duration: 10s; }
+    .particle:nth-child(11) { width: 3px; height: 3px; left: 25%; animation-delay: 10s; animation-duration: 7s; }
+    .particle:nth-child(12) { width: 5px; height: 5px; left: 35%; animation-delay: 11s; animation-duration: 9s; }
+    .particle:nth-child(13) { width: 4px; height: 4px; left: 45%; animation-delay: 12s; animation-duration: 8s; }
+    .particle:nth-child(14) { width: 6px; height: 6px; left: 55%; animation-delay: 13s; animation-duration: 10s; }
+    .particle:nth-child(15) { width: 3px; height: 3px; left: 65%; animation-delay: 14s; animation-duration: 7s; }
+    .particle:nth-child(16) { width: 5px; height: 5px; left: 75%; animation-delay: 15s; animation-duration: 9s; }
+    .particle:nth-child(17) { width: 4px; height: 4px; left: 85%; animation-delay: 16s; animation-duration: 8s; }
+    .particle:nth-child(18) { width: 7px; height: 7px; left: 95%; animation-delay: 17s; animation-duration: 11s; }
+    .particle:nth-child(19) { width: 3px; height: 3px; left: 5%; animation-delay: 18s; animation-duration: 6s; }
+    .particle:nth-child(20) { width: 5px; height: 5px; left: 12%; animation-delay: 19s; animation-duration: 9s; }
+    
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(100vh) rotate(0deg);
+        opacity: 0;
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      50% {
+        transform: translateY(-10vh) rotate(180deg);
+        opacity: 0.8;
+      }
+    }
+    
+    /* Main content with slight background */
+    .main-content {
+      position: relative;
+      z-index: 1;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 10px;
+      padding: 20px;
+      backdrop-filter: blur(5px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Main layout container */
+    .dashboard-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      align-items: start;
+    }
+    
+    .controls-section {
+      max-width: 700px;
+    }
+    
+    .plots-section {
+      min-height: 400px;
+      padding: 20px;
+      background: rgba(249, 249, 249, 0.9);
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-top: 15px;
+      backdrop-filter: blur(5px);
+    }
+    
+    #liveStatus{margin-top:15px;padding:10px;background:rgba(240,240,240,0.9);border:1px solid #ccc; width: 100%; max-width: 700px; border-radius:4px;}
+    #settingsPanel{display:none;margin-top:20px;padding:15px;background:rgba(250,250,250,0.9);
+      border:1px solid #ccc;border-radius:4px; width: 100%; max-width: 700px}
     #settingsPanel input{width:140px}
-    .timer-config{margin:8px 0;padding:8px;background:#eef;border-radius:4px}
+    .timer-config{margin:8px 0;padding:8px;background:rgba(238,238,255,0.9);border-radius:4px}
 
     .settings-grid {
       display: grid;
@@ -27,123 +116,190 @@
     }
     .settingsbutton-grid {
       display: grid;
-      grid-template-columns: repeat(4, 150px); /* ✅ Equal 4-column layout */
+      grid-template-columns: repeat(4, 150px);
       gap: 10px 20px;
       margin-top: 10px;
     }
     .settingsbutton-grid button {
-      width: 100%; /* ✅ Buttons will expand to fill each cell */
+      width: 100%;
+    }
+    
+    .plot-controls {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    
+    .plot-controls h3 {
+      margin-top: 0;
+      margin-bottom: 15px;
+    }
+    
+    .plot-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .day-input-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    #plotImage {
+      width: 100%;
+      height: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.9);
+    }
+    
+    /* Responsive design */
+    @media (max-width: 1200px) {
+      .dashboard-container {
+        grid-template-columns: 1fr;
+      }
+      
+      .plots-section {
+        order: 2;
+      }
     }
 
   </style>
 </head>
 <body>
-  <h1>Moonlight Simulator</h1>
-
-  <span id="simStateBadge" class="badge stopped">Stopped</span>
-
-  <div id="liveStatus">
-    <b>Sim Time:</b> <span id="stTime">--:--:--:--</span><br>
-    <b>Progress:</b> <span id="stProg">0.00</span>%<br>
-    <b>Phase:</b> <span id="stPhase">N/A</span><br>
-    <b>Angle:</b> <span id="stAng">0.00</span>° |
-    <b>Altitude:</b> <span id="stAlt">0.0</span>°
+  <!-- Particle Background -->
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
   </div>
 
-  <button onclick="startSimulation()">Start Simulation</button>
-  <button onclick="endSimulation()">End Simulation</button>
-  <button onclick="toggleSettings()">Settings</button>
-  <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
-  <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
+  <div class="main-content">
+    <h1>GIBBOUS</h1>
 
-  <div>
-    <label>Day (1–N):</label>
-    <input type="number" id="dayInput" min="1" placeholder="1">
-    <button onclick="plotAltitude()">Plot Altitude</button>
-  </div>
+    <div class="dashboard-container">
+      <!-- Left side: Controls -->
+      <div class="controls-section">
+        <span id="simStateBadge" class="badge stopped">Stopped</span>
 
+        <div id="liveStatus">
+          <b>Sim Time:</b> <span id="stTime">--:--:--:--</span><br>
+          <b>Progress:</b> <span id="stProg">0.00</span>%<br>
+          <b>Phase:</b> <span id="stPhase">N/A</span><br>
+          <b>Angle:</b> <span id="stAng">0.00</span>° |
+          <b>Altitude:</b> <span id="stAlt">0.0</span>°
+        </div>
 
+        <button onclick="startSimulation()">Start Simulation</button>
+        <button onclick="endSimulation()">End Simulation</button>
+        <button onclick="toggleSettings()">Settings</button>
 
+        <!-- SETTINGS PANEL -->
+        <div id="settingsPanel">
+          <h3>Simulation Settings</h3>
+          <div class="settings-grid">
 
+          <label>Cycle Length (days)</label>
+          <input type="number" id="cycleInput" placeholder="28" min="1" step="1">
 
+          <label>Independent Timer</label>
+          <select id="independentTimerInput" style="width:160px;">
+            <option value="" disabled selected hidden>— select —</option>
+            <option value="No" selected="">No</option>
+            <option value="Yes">Yes</option>
+          </select>
 
-  <!-- SETTINGS PANEL -->
+          <label>Moon Colour Hex (RRGGBB)</label>
+          <input type="text" id="hexInput" placeholder="FF0000">
 
+          <label>Length of Day (hours)</label>
+          <input type="number" id="dayLengthHoursInput" placeholder="24" step="0.1">
 
-  <div id="settingsPanel">
-    <h3>Simulation Settings</h3>
-    <div class="settings-grid">
+          <label>Start Phase</label>
+          <input list="phaseList" id="startPhaseInput" placeholder="Full Moon">
+          <datalist id="phaseList">
+            <option>Full Moon</option>
+            <option>Waning Gibbous</option>
+            <option>Last Quarter</option>
+            <option>Waning Crescent</option>
+            <option>New Moon</option>
+            <option>Waxing Crescent</option>
+            <option>First Quarter</option>
+            <option>Waxing Gibbous</option>
+          </datalist>
 
-    <label>Cycle Length (days)</label>
-    <input type="number" id="cycleInput" placeholder="28" min="1" step="1">
+          <label>Start Time</label>
+          <input type="text" id="startTimeInput" placeholder="00:00">
 
-    <label>Independent Timer</label>
-    <select id="independentTimerInput" style="width:160px;">
-      <option value="" disabled selected hidden>— select —</option>
-      <option value="No" selected="">No</option>
-      <option value="Yes">Yes</option>
-    </select>
+          <div id="timerOptionYes" class="timer-config" style="display:none; grid-column: 1 / -1; 
+            display: flex; justify-content: center; align-items: center; gap: 0 10px;">
+            <label for="dropCountdownInput">Real World Feed Start Time</label>
+            <input type="text" id="dropCountdownInput" placeholder="19:00"><br>
+            <label for="endFeedCountdownInput">Real World Feed End Time</label>
+            <input type="text" id="endFeedCountdownInput" placeholder="04:00">
+          </div>
 
+          <div id="timerOptionNo" class="timer-config" style="display:none; grid-column: 1 / -1; 
+            display: flex; justify-content: center; align-items: center; gap: 0 10px;">
+            <label for="feedStartInput">Sim. Feed Start Time</label>
+            <input type="text" id="feedStartInput" placeholder="19:00"><br>
+            <label for="feedEndInput">Sim. Feed End Time</label>
+            <input type="text" id="feedEndInput" placeholder="04:00">
+          </div>
 
-    <!-- <label>Feed Start (HH:MM)</label>
-    <input type="text" id="feedStartInput" placeholder="19:00">
-    <label>Feed End (HH:MM)</label>
-    <input type="text" id="feedEndInput" placeholder="04:00"> -->
+          </div>
+          <div class="settingsbutton-grid">
+          <button onclick="toggleSettings()">Close</button>
+          <button onclick="applySettings()">Apply Settings</button>
+          <button onclick="startSimulation()">Start</button>
+          <button onclick="endSimulation()">End</button>
+          </div>
+        </div>
+      </div>
 
-    <label>Moon Colour Hex (RRGGBB)</label>
-    <input type="text" id="hexInput" placeholder="FF0000">
+      <!-- Right side: Plots -->
+      <div class="plots-section">
+        <div class="plot-controls">
+          <h3>Plot Controls</h3>
+          
+          <div class="plot-buttons">
+            <button onclick="plotPhaseAngle()">Plot Phase Angles</button>
+            <button onclick="plotRiseSet()">Plot Rise/Set Times</button>
+          </div>
+          
+          <div class="day-input-section">
+            <label>Day (1–N):</label>
+            <input type="number" id="dayInput" min="1" placeholder="1">
+            <button onclick="plotAltitude()">Plot Altitude</button>
+          </div>
+        </div>
 
-    <label>Length of Day (hours)</label>
-    <input type="number" id="dayLengthHoursInput" placeholder="24" step="0.1">
-
-    <label>Start Phase</label>
-    <input list="phaseList" id="startPhaseInput" placeholder="Full Moon">
-    <datalist id="phaseList">
-      <option>Full Moon</option>
-      <option>Waning Gibbous</option>
-      <option>Last Quarter</option>
-      <option>Waning Crescent</option>
-      <option>New Moon</option>
-      <option>Waxing Crescent</option>
-      <option>First Quarter</option>
-      <option>Waxing Gibbous</option>
-    </datalist>
-
-    <label>Start Time</label>
-    <input type="text" id="startTimeInput" placeholder="00:00">
-
-    <div id="timerOptionYes" class="timer-config" style="display:none; grid-column: 1 / -1; 
-      display: flex; justify-content: center; align-items: center; gap: 0 10px;">
-      <label for="dropCountdownInput">Real World Feed Start Time</label>
-      <input type="text" id="dropCountdownInput" placeholder="19:00"><br>
-      <label for="endFeedCountdownInput">Real World Feed End Time</label>
-      <input type="text" id="endFeedCountdownInput" placeholder="04:00">
+        <img id="plotImage" src="/placeholder.svg" alt="Plot will appear here">
+      </div>
     </div>
-
-    <div id="timerOptionNo" class="timer-config" style="display:none; grid-column: 1 / -1; 
-      display: flex; justify-content: center; align-items: center; gap: 0 10px;">
-      <label for="feedStartInput">Sim. Feed Start Time</label>
-      <input type="text" id="feedStartInput" placeholder="19:00"><br>
-      <label for="feedEndInput">Sim. Feed End Time</label>
-      <input type="text" id="feedEndInput" placeholder="04:00">
-    </div>
-    
-
-
-    
-
   </div>
-  <div class="settingsbutton-grid">
-  <button onclick="toggleSettings()">Close</button>
-  <button onclick="applySettings()">Apply Settings</button>
-  <button onclick="startSimulation()">Start</button>
-  <button onclick="endSimulation()">End</button>
-  </div>
-  
-</div>
-
-
-<img id="plotImage" src="" alt="Plot will appear here">
 
   <script>
     async function getJSON(url){
@@ -327,5 +483,3 @@
   </script>
 </body>
 </html>
-
-
